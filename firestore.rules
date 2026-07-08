@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /speed_cameras/{cameraId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && (request.resource.data.source != 'user'
+            || request.resource.data.createdBy == request.auth.uid);
+
+      // Covers promotion pending -> approved and limit/direction corrections
+      // from the phone review banner (features.md 2.1).
+      allow update: if isSignedIn()
+        && (resource.data.source != 'user'
+            || resource.data.createdBy == request.auth.uid);
+
+      // 'openstreetmap' records are hidden per-user via
+      // users/{uid}/ignored_cameras, never deleted client-side.
+      allow delete: if isSignedIn()
+        && resource.data.source == 'user'
+        && resource.data.createdBy == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /ignored_cameras/{cameraId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // MVP: any signed-in user can trigger/record an OSM Overpass sync.
+    // Fase 7 hardening: move ingestion behind a Cloud Function so a
+    // malicious client can't spoof 'openstreetmap'-sourced records.
+    match /sync_metadata/{docId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

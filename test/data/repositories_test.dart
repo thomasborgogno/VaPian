@@ -1,0 +1,153 @@
+import 'package:autovelox_app/data/models/speed_camera.dart';
+import 'package:autovelox_app/data/models/user_settings.dart';
+import 'package:autovelox_app/data/repositories/blacklist_repository.dart';
+import 'package:autovelox_app/data/repositories/settings_repository.dart';
+import 'package:autovelox_app/data/repositories/speed_camera_repository.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('SpeedCameraRepository', () {
+    late FakeFirebaseFirestore firestore;
+    late SpeedCameraRepository repository;
+
+    setUp(() {
+      firestore = FakeFirebaseFirestore();
+      repository = SpeedCameraRepository(firestore: firestore);
+    });
+
+    test('addCamera then watchNear returns the camera within radius', () async {
+      await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9028,
+          lng: 12.4964,
+          limit: 90,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.openstreetmap,
+          geohash: 'sr2yk1z',
+        ),
+      );
+
+      final cameras = await repository.watchNear(41.9028, 12.4964, 5000).first;
+
+      expect(cameras, hasLength(1));
+      expect(cameras.first.limit, 90);
+    });
+
+    test('watchNear excludes cameras outside the radius', () async {
+      await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 45.4642,
+          lng: 9.1900,
+          limit: 130,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.openstreetmap,
+          geohash: 'u0nd9x2y',
+        ),
+      );
+
+      final cameras = await repository.watchNear(41.9028, 12.4964, 5000).first;
+
+      expect(cameras, isEmpty);
+    });
+
+    test('deleteCamera removes the document', () async {
+      final id = await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9028,
+          lng: 12.4964,
+          limit: 50,
+          status: SpeedCameraStatus.pending,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+          createdBy: 'uid1',
+        ),
+      );
+
+      await repository.deleteCamera(id);
+
+      final doc = await firestore.collection('speed_cameras').doc(id).get();
+      expect(doc.exists, isFalse);
+    });
+
+    test('updateStatus promotes pending to approved', () async {
+      final id = await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9028,
+          lng: 12.4964,
+          limit: 50,
+          status: SpeedCameraStatus.pending,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+          createdBy: 'uid1',
+        ),
+      );
+
+      await repository.updateStatus(id, SpeedCameraStatus.approved);
+
+      final doc = await firestore.collection('speed_cameras').doc(id).get();
+      expect(doc.data()!['status'], 'approved');
+    });
+  });
+
+  group('SettingsRepository', () {
+    test('updateSettings then watchSettings reflects the change', () async {
+      final firestore = FakeFirebaseFirestore();
+      final repository = SettingsRepository(firestore: firestore);
+
+      await repository.updateSettings(
+        'uid1',
+        const UserSettings(alertDistanceMeters: 500, toleranceFilterEnabled: false),
+      );
+
+      final settings = await repository.watchSettings('uid1').first;
+
+      expect(settings.alertDistanceMeters, 500);
+      expect(settings.toleranceFilterEnabled, isFalse);
+    });
+
+    test('watchSettings returns defaults when no doc exists', () async {
+      final repository = SettingsRepository(firestore: FakeFirebaseFirestore());
+
+      final settings = await repository.watchSettings('missing-uid').first;
+
+      expect(settings.alertDistanceMeters, 300);
+    });
+
+    test('recordSync updates the global sync metadata', () async {
+      final firestore = FakeFirebaseFirestore();
+      final repository = SettingsRepository(firestore: firestore);
+
+      await repository.recordSync(camerasSynced: 42);
+
+      final metadata = await repository.watchGlobalSyncMetadata().first;
+      expect(metadata.camerasSynced, 42);
+      expect(metadata.isStale(), isFalse);
+    });
+  });
+
+  group('BlacklistRepository', () {
+    test('ignoreCamera then watchIgnoredCameras includes it', () async {
+      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
+
+      await repository.ignoreCamera('uid1', 'cam1');
+      final ignored = await repository.watchIgnoredCameras('uid1').first;
+
+      expect(ignored.map((c) => c.cameraId), contains('cam1'));
+    });
+
+    test('unignoreCamera removes it again', () async {
+      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
+
+      await repository.ignoreCamera('uid1', 'cam1');
+      await repository.unignoreCamera('uid1', 'cam1');
+      final ignored = await repository.watchIgnoredCameras('uid1').first;
+
+      expect(ignored, isEmpty);
+    });
+  });
+}

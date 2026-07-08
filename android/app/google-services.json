@@ -12,7 +12,20 @@
           "package_name": "com.bortho.autovelox"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "105468480792-9dq1mgak99uts0t1od6dvocfut15lm38.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bortho.autovelox",
+            "certificate_hash": "1339a90b4c9c1c107d5dab5dc2d91efca204ddf9"
+          }
+        },
+        {
+          "client_id": "105468480792-m7ddss7mlifs3r3i343h3gbqipspnpe6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB5WdC4sgeSgFHIjCEbn8hApH0RwwvKQTU"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "105468480792-m7ddss7mlifs3r3i343h3gbqipspnpe6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
