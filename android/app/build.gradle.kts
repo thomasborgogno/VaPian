@@ -3,10 +3,12 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // Firebase (required by firebase_core / cloud_firestore)
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.example.autovelox_app"
+    namespace = "com.bortho.autovelox"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,10 +23,11 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.autovelox_app"
+        applicationId = "com.bortho.autovelox"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // androidx.car.app requires minSdk 23, hence the override here.
+        minSdk = maxOf(flutter.minSdkVersion, 23)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -41,4 +44,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Android Auto / Automotive OS screens, built with the native Car App Library.
+    // Templates, Screen/Session lifecycle etc. are implemented in Kotlin and
+    // bridged to Dart via Method Channels.
+    implementation("androidx.car.app:app:1.4.0")
 }

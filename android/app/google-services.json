@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "105468480792",
+    "project_id": "bortho-autovelox",
+    "storage_bucket": "bortho-autovelox.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:105468480792:android:10abad1e2696193fa9226d",
+        "android_client_info": {
+          "package_name": "com.bortho.autovelox"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5WdC4sgeSgFHIjCEbn8hApH0RwwvKQTU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
