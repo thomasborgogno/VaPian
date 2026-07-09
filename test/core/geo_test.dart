@@ -65,6 +65,32 @@ void main() {
     });
   });
 
+  group('destinationPoint', () {
+    test('round-trips distance and bearing back to the origin', () {
+      const originLat = 41.9028;
+      const originLng = 12.4964;
+      const bearing = 200.0;
+      const distance = 15.0;
+
+      final destination = destinationPoint(originLat, originLng, bearing, distance);
+
+      expect(
+        haversineDistanceMeters(originLat, originLng, destination.lat, destination.lng),
+        closeTo(distance, 0.5),
+      );
+      expect(
+        bearingDegrees(originLat, originLng, destination.lat, destination.lng),
+        closeTo(bearing, 0.5),
+      );
+    });
+
+    test('due north increases latitude and keeps longitude', () {
+      final destination = destinationPoint(41.9028, 12.4964, 0, 100);
+      expect(destination.lat, greaterThan(41.9028));
+      expect(destination.lng, closeTo(12.4964, 0.0001));
+    });
+  });
+
   group('geohashQueryBounds', () {
     test('start is a prefix of end and sorts before it', () {
       final bounds = geohashQueryBounds(41.9028, 12.4964, 5000);

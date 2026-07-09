@@ -51,4 +51,24 @@ class SpeedCameraRepository {
       'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
   }
+
+  /// Corrects an existing report's position/limit/direction (e.g. after
+  /// dragging the marker or its direction handle on the map).
+  Future<void> updateCamera(
+    String id, {
+    double? lat,
+    double? lng,
+    int? limit,
+    int? direction,
+    String? geohash,
+  }) {
+    return _collection.doc(id).update({
+      'lat': ?lat,
+      'lng': ?lng,
+      'limit': ?limit,
+      'direction': ?direction,
+      'geohash': ?geohash,
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
 }

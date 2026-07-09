@@ -35,6 +35,33 @@ double bearingDegrees(double lat1, double lng1, double lat2, double lng2) {
   return (_radToDeg(theta) + 360) % 360;
 }
 
+/// Point reached by travelling [distanceMeters] from ([latitude], [longitude])
+/// along [bearingDeg] (0 = north, 90 = east). Used to place the direction
+/// "handle" a fixed distance from a speed camera marker.
+({double lat, double lng}) destinationPoint(
+  double latitude,
+  double longitude,
+  double bearingDeg,
+  double distanceMeters,
+) {
+  final bearingRad = _degToRad(bearingDeg);
+  final latRad = _degToRad(latitude);
+  final lngRad = _degToRad(longitude);
+  final angularDistance = distanceMeters / _earthRadiusMeters;
+
+  final destLatRad = asin(
+    sin(latRad) * cos(angularDistance) +
+        cos(latRad) * sin(angularDistance) * cos(bearingRad),
+  );
+  final destLngRad = lngRad +
+      atan2(
+        sin(bearingRad) * sin(angularDistance) * cos(latRad),
+        cos(angularDistance) - sin(latRad) * sin(destLatRad),
+      );
+
+  return (lat: _radToDeg(destLatRad), lng: _radToDeg(destLngRad));
+}
+
 /// Standard geohash base32 encoding (bit-interleaved lat/lng), same
 /// algorithm ported 1:1 to Kotlin's `GeoHashUtil` so both clients index
 /// `speed_cameras.geohash` identically.

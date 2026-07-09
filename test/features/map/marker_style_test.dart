@@ -1,10 +1,9 @@
 import 'package:autovelox_app/data/models/speed_camera.dart';
 import 'package:autovelox_app/features/map/marker_style.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 void main() {
-  group('markerHueFor', () {
+  group('markerColorFor', () {
     test('OpenStreetMap cameras are green regardless of status', () {
       const camera = SpeedCamera(
         id: 'cam1',
@@ -15,7 +14,7 @@ void main() {
         source: SpeedCameraSource.openstreetmap,
         geohash: 'x',
       );
-      expect(markerHueFor(camera), BitmapDescriptor.hueGreen);
+      expect(markerColorFor(camera), speedCameraGreen);
     });
 
     test('approved user reports are blue', () {
@@ -28,7 +27,7 @@ void main() {
         source: SpeedCameraSource.user,
         geohash: 'x',
       );
-      expect(markerHueFor(camera), BitmapDescriptor.hueBlue);
+      expect(markerColorFor(camera), speedCameraBlue);
     });
 
     test('pending user reports are orange', () {
@@ -41,7 +40,7 @@ void main() {
         source: SpeedCameraSource.user,
         geohash: 'x',
       );
-      expect(markerHueFor(camera), BitmapDescriptor.hueOrange);
+      expect(markerColorFor(camera), speedCameraOrange);
     });
   });
 }
