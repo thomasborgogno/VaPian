@@ -11,6 +11,7 @@ import '../../data/models/speed_camera.dart';
 import '../../data/providers.dart';
 import '../settings/settings_screen.dart';
 import 'draft_marker_painter.dart';
+import 'map_style_config.dart';
 import 'map_viewport.dart';
 import 'marker_style.dart';
 import 'speed_camera_marker_icons.dart';
@@ -410,10 +411,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           GoogleMap(
             initialCameraPosition: CameraPosition(target: _initialPosition, zoom: _currentZoom),
             markers: markers,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            rotateGesturesEnabled: false,
-            tiltGesturesEnabled: false,
+            mapType: MapStyleConfig.mapType,
+            style: MapStyleConfig.styleJson,
+            zoomControlsEnabled: MapStyleConfig.zoomControlsEnabled,
+            zoomGesturesEnabled: MapStyleConfig.zoomGesturesEnabled,
+            compassEnabled: MapStyleConfig.compassEnabled,
+            mapToolbarEnabled: MapStyleConfig.mapToolbarEnabled,
+            buildingsEnabled: MapStyleConfig.buildingsEnabled,
+            indoorViewEnabled: MapStyleConfig.indoorViewEnabled,
+            trafficEnabled: MapStyleConfig.trafficEnabled,
+            liteModeEnabled: MapStyleConfig.liteModeEnabled,
+            myLocationEnabled: MapStyleConfig.myLocationEnabled,
+            myLocationButtonEnabled: MapStyleConfig.myLocationButtonEnabled,
+            rotateGesturesEnabled: MapStyleConfig.rotateGesturesEnabled,
+            tiltGesturesEnabled: MapStyleConfig.tiltGesturesEnabled,
             scrollGesturesEnabled: draft == null,
             onMapCreated: (controller) {
               _controller = controller;
