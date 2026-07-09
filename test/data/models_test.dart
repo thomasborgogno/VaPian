@@ -49,6 +49,23 @@ void main() {
       expect(approved.limit, camera.limit);
       expect(approved.source, camera.source);
     });
+
+    test('round-trips with a null limit (OSM node without maxspeed)', () {
+      const camera = SpeedCamera(
+        id: 'osm_1',
+        lat: 41.9028,
+        lng: 12.4964,
+        status: SpeedCameraStatus.approved,
+        source: SpeedCameraSource.openstreetmap,
+        geohash: 'sr2yk',
+      );
+
+      final map = camera.toMap();
+      expect(map.containsKey('limit'), isFalse);
+
+      final restored = SpeedCamera.fromMap('osm_1', map);
+      expect(restored.limit, isNull);
+    });
   });
 
   group('UserSettings', () {
@@ -73,6 +90,19 @@ void main() {
       expect(restored.alertDistanceMode, AlertDistanceMode.dynamicDistance);
       expect(restored.alertDistanceMeters, 500);
       expect(restored.toleranceFilterEnabled, isFalse);
+    });
+
+    test('round-trips the selected OSM sync regions', () {
+      const settings = UserSettings(osmSyncRegions: ['Lombardia', 'Lazio']);
+
+      final restored = UserSettings.fromMap(settings.toMap());
+
+      expect(restored.osmSyncRegions, ['Lombardia', 'Lazio']);
+    });
+
+    test('defaults to no OSM sync regions selected', () {
+      const settings = UserSettings();
+      expect(settings.osmSyncRegions, isEmpty);
     });
   });
 

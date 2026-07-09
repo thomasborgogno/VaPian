@@ -9,6 +9,8 @@ import '../../core/utils/geo.dart';
 import '../../core/widgets/user_avatar.dart';
 import '../../data/models/speed_camera.dart';
 import '../../data/providers.dart';
+import '../../data/services/osm_auth_service.dart';
+import '../../data/services/osm_edit_service.dart';
 import '../settings/settings_screen.dart';
 import 'draft_marker_painter.dart';
 import 'map_style_config.dart';
@@ -45,12 +47,22 @@ class _CameraDraft {
     required this.direction,
     required this.limit,
     this.existingId,
+    this.existingSource,
+    this.existingStatus,
+    this.canPublishToOsm = false,
   });
 
   final LatLng position;
   final double direction;
   final int limit;
   final String? existingId;
+  final SpeedCameraSource? existingSource;
+  final SpeedCameraStatus? existingStatus;
+
+  /// True only when editing an existing `source: 'user'`, `status: 'pending'`
+  /// report and the user has an OpenStreetMap account linked
+  /// (features.md 4) — computed once in `_startDraft`.
+  final bool canPublishToOsm;
 
   bool get isNew => existingId == null;
 
@@ -60,6 +72,9 @@ class _CameraDraft {
       direction: direction ?? this.direction,
       limit: limit,
       existingId: existingId,
+      existingSource: existingSource,
+      existingStatus: existingStatus,
+      canPublishToOsm: canPublishToOsm,
     );
   }
 }
@@ -76,6 +91,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Offset? _draftScreenPosition;
   PersistentBottomSheetController? _sheetController;
   double _currentZoom = 14;
+  bool _syncReminderDismissed = false;
 
   @override
   void initState() {
@@ -171,6 +187,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final controller = _controller;
     if (controller == null) return;
 
+    final isPendingUserReport =
+        existing != null &&
+        existing.source == SpeedCameraSource.user &&
+        existing.status == SpeedCameraStatus.pending;
+    final osmLinked = isPendingUserReport ? await OsmAuthService().isLinked() : false;
+
     final screenCoordinate = await controller.getScreenCoordinate(position);
     if (!mounted) return;
     final ratio = MediaQuery.of(context).devicePixelRatio;
@@ -181,6 +203,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         direction: (existing?.direction ?? 0).toDouble(),
         limit: existing?.limit ?? _speedLimitPresets[1],
         existingId: existing?.id,
+        existingSource: existing?.source,
+        existingStatus: existing?.status,
+        canPublishToOsm: isPendingUserReport && osmLinked,
       );
       _draftScreenPosition = Offset(screenCoordinate.x / ratio, screenCoordinate.y / ratio);
     });
@@ -191,6 +216,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         onSave: _saveDraft,
         onCancel: _closeDraft,
         onDelete: _draft!.isNew ? null : _deleteDraft,
+        onPublishToOsm: _draft!.canPublishToOsm ? _publishToOsm : null,
       ),
     );
     _sheetController!.closed.then((_) {
@@ -207,17 +233,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _sheetController?.close();
   }
 
-  Future<void> _saveDraft(int limit) async {
+  /// Saves the current draft (new report or edit) and returns the
+  /// resulting document id — shared by "Salva" and "Pubblica su
+  /// OpenStreetMap" (which saves first, then publishes what was saved).
+  Future<String?> _persistDraft(int limit) async {
     final draft = _draft;
     final uid = ref.read(authStateProvider).value?.uid;
-    if (draft == null || uid == null) return;
+    if (draft == null || uid == null) return null;
 
     final repository = ref.read(speedCameraRepositoryProvider);
     final geohash = encodeGeohash(draft.position.latitude, draft.position.longitude, precision: 9);
     final direction = draft.direction.round();
 
     if (draft.isNew) {
-      await repository.addCamera(
+      return repository.addCamera(
         SpeedCamera(
           id: '',
           lat: draft.position.latitude,
@@ -230,17 +259,51 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           createdBy: uid,
         ),
       );
-    } else {
-      await repository.updateCamera(
-        draft.existingId!,
+    }
+    await repository.updateCamera(
+      draft.existingId!,
+      lat: draft.position.latitude,
+      lng: draft.position.longitude,
+      limit: limit,
+      direction: direction,
+      geohash: geohash,
+    );
+    return draft.existingId!;
+  }
+
+  Future<void> _saveDraft(int limit) async {
+    await _persistDraft(limit);
+    _closeDraft();
+  }
+
+  /// features.md 4: promotes a pending user report to `approved` by first
+  /// saving it, then publishing it as a new node on production OpenStreetMap
+  /// via a changeset.
+  Future<void> _publishToOsm(int limit) async {
+    final draft = _draft;
+    if (draft == null) return;
+    try {
+      final id = await _persistDraft(limit);
+      if (id == null) return;
+      final camera = SpeedCamera(
+        id: id,
         lat: draft.position.latitude,
         lng: draft.position.longitude,
         limit: limit,
-        direction: direction,
-        geohash: geohash,
+        direction: draft.direction.round(),
+        status: SpeedCameraStatus.pending,
+        source: SpeedCameraSource.user,
+        geohash: '',
       );
+      await OsmEditService().publishCamera(camera);
+      await ref.read(speedCameraRepositoryProvider).updateStatus(id, SpeedCameraStatus.approved);
+      _closeDraft();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Pubblicazione OSM non riuscita: $e')));
+      }
     }
-    _closeDraft();
   }
 
   Future<void> _deleteDraft() async {
@@ -391,6 +454,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final camerasAsync = ref.watch(nearbyCamerasProvider);
     final markers = _buildMarkers(camerasAsync.value ?? const []);
     final draft = _draft;
+    final syncMetadata = ref.watch(syncMetadataProvider).value;
+    final showSyncReminder =
+        !_syncReminderDismissed && draft == null && (syncMetadata?.isStale() ?? false);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -435,6 +501,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             onLongPress: (position) => _startDraft(position: position),
           ),
           if (draft != null) _buildDraftOverlay(),
+          if (showSyncReminder)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _SyncReminderBanner(
+                onSync: () {
+                  setState(() => _syncReminderDismissed = true);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                  );
+                },
+                onDismiss: () => setState(() => _syncReminderDismissed = true),
+              ),
+            ),
         ],
       ),
       floatingActionButton: draft == null
@@ -448,18 +529,64 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
+/// features.md 2.2 Smart Reminder: shown when the global OSM sync is more
+/// than 7 days old (or has never run) — dismissing it is per-session only,
+/// it comes back next time the map screen is rebuilt while still stale.
+class _SyncReminderBanner extends StatelessWidget {
+  const _SyncReminderBanner({required this.onSync, required this.onDismiss});
+
+  final VoidCallback onSync;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Material(
+        color: Theme.of(context).colorScheme.secondaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'I dati degli autovelox potrebbero non essere aggiornati. '
+                  'Sincronizza ora con OpenStreetMap.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              TextButton(onPressed: onSync, child: const Text('Sincronizza')),
+              IconButton(
+                icon: const Icon(Icons.close),
+                iconSize: 18,
+                onPressed: onDismiss,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DraftSheet extends StatefulWidget {
   const _DraftSheet({
     required this.initialLimit,
     required this.onSave,
     required this.onCancel,
     this.onDelete,
+    this.onPublishToOsm,
   });
 
   final int initialLimit;
   final ValueChanged<int> onSave;
   final VoidCallback onCancel;
   final VoidCallback? onDelete;
+
+  /// Non-null only when editing an own pending report with OpenStreetMap
+  /// linked (features.md 4) — takes the currently selected limit, like
+  /// [onSave].
+  final ValueChanged<int>? onPublishToOsm;
 
   @override
   State<_DraftSheet> createState() => _DraftSheetState();
@@ -477,6 +604,7 @@ class _DraftSheetState extends State<_DraftSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Text('Limite di velocità'),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -494,7 +622,7 @@ class _DraftSheetState extends State<_DraftSheet> {
                     .toList(),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             Row(
               children: [
                 if (widget.onDelete != null) ...[
@@ -520,6 +648,17 @@ class _DraftSheetState extends State<_DraftSheet> {
                 ),
               ],
             ),
+            if (widget.onPublishToOsm != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => widget.onPublishToOsm!(_limit),
+                  icon: const Icon(Icons.public),
+                  label: const Text('Pubblica su OpenStreetMap'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -540,7 +679,10 @@ class _CameraDetailsSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Autovelox ${camera.limit} km/h', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            camera.limit != null ? 'Autovelox ${camera.limit} km/h' : 'Autovelox (limite non disponibile)',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 8),
           Text(
             'Sorgente: ${camera.source == SpeedCameraSource.openstreetmap ? 'OpenStreetMap' : 'Utente'}',

@@ -17,6 +17,7 @@ class UserSettings {
     this.toleranceFilterEnabled = true,
     this.osmLinked = false,
     this.lastOsmSyncAt,
+    this.osmSyncRegions = const [],
   });
 
   factory UserSettings.fromMap(Map<String, dynamic> map) {
@@ -27,6 +28,7 @@ class UserSettings {
       toleranceFilterEnabled: map['toleranceFilterEnabled'] as bool? ?? true,
       osmLinked: map['osmLinked'] as bool? ?? false,
       lastOsmSyncAt: (map['lastOsmSyncAt'] as Timestamp?)?.toDate(),
+      osmSyncRegions: (map['osmSyncRegions'] as List<dynamic>?)?.cast<String>() ?? const [],
     );
   }
 
@@ -37,12 +39,17 @@ class UserSettings {
   final bool osmLinked;
   final DateTime? lastOsmSyncAt;
 
+  /// Italian regions (see `italianRegions`) selected for the manual OSM
+  /// sync — multi-select, persisted so the choice survives across sessions.
+  final List<String> osmSyncRegions;
+
   Map<String, dynamic> toMap() {
     return {
       'alertDistanceMode': alertDistanceMode.value,
       'alertDistanceMeters': alertDistanceMeters,
       'toleranceFilterEnabled': toleranceFilterEnabled,
       'osmLinked': osmLinked,
+      'osmSyncRegions': osmSyncRegions,
       if (lastOsmSyncAt != null) 'lastOsmSyncAt': Timestamp.fromDate(lastOsmSyncAt!),
     };
   }
@@ -53,6 +60,7 @@ class UserSettings {
     bool? toleranceFilterEnabled,
     bool? osmLinked,
     DateTime? lastOsmSyncAt,
+    List<String>? osmSyncRegions,
   }) {
     return UserSettings(
       alertDistanceMode: alertDistanceMode ?? this.alertDistanceMode,
@@ -60,6 +68,7 @@ class UserSettings {
       toleranceFilterEnabled: toleranceFilterEnabled ?? this.toleranceFilterEnabled,
       osmLinked: osmLinked ?? this.osmLinked,
       lastOsmSyncAt: lastOsmSyncAt ?? this.lastOsmSyncAt,
+      osmSyncRegions: osmSyncRegions ?? this.osmSyncRegions,
     );
   }
 }

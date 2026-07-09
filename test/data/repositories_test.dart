@@ -92,6 +92,24 @@ void main() {
       final doc = await firestore.collection('speed_cameras').doc(id).get();
       expect(doc.data()!['status'], 'approved');
     });
+
+    test('upsertOsmCamera re-syncing the same node updates it in place', () async {
+      const first = SpeedCamera(
+        id: 'osm_123',
+        lat: 45.4642,
+        lng: 9.1900,
+        limit: 50,
+        status: SpeedCameraStatus.approved,
+        source: SpeedCameraSource.openstreetmap,
+        geohash: 'u0nd9x2y',
+      );
+      await repository.upsertOsmCamera(first);
+      await repository.upsertOsmCamera(first.copyWith(limit: 70));
+
+      final snapshot = await firestore.collection('speed_cameras').get();
+      expect(snapshot.docs, hasLength(1));
+      expect(snapshot.docs.single.data()['limit'], 70);
+    });
   });
 
   group('SettingsRepository', () {

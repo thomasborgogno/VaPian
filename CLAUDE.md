@@ -11,6 +11,7 @@ App Flutter (Android) per la segnalazione crowdsourced di autovelox, con estensi
 - **Native-first per Android Auto**: tutta la logica di guida in tempo reale (GPS, prossimità, TTS, audio focus, schermate auto) vive in Kotlin nativo, non in Dart/Method Channel. Flutter possiede solo l'app telefono. Le due parti comunicano scrivendo/leggendo le stesse collezioni Firestore, non via Method Channel. Motivazione completa in `PLAN.md`.
 - **Auth**: Google Sign-In o accesso come ospite (Firebase Anonymous Auth). Un ospite che poi accede con Google viene collegato (`linkWithCredential`), non sostituito.
 - Package Android: `com.bortho.autovelox`. Progetto Firebase: `bortho-autovelox`.
+- **⚠️ OpenStreetMap (`lib/core/constants/osm_config.dart`) punta alla produzione**, non a una sandbox: login OAuth2 e pubblicazione changeset (`OsmEditService`) scrivono dati reali su `www.openstreetmap.org`/`api.openstreetmap.org`. Non redirigere "per comodità" verso `master.apis.dev.openstreetmap.org` senza chiederlo esplicitamente.
 
 ## Setup richiesto su ogni nuova macchina
 

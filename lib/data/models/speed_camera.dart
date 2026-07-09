@@ -21,7 +21,7 @@ class SpeedCamera {
     required this.id,
     required this.lat,
     required this.lng,
-    required this.limit,
+    this.limit,
     required this.status,
     required this.source,
     required this.geohash,
@@ -36,7 +36,7 @@ class SpeedCamera {
       id: id,
       lat: (map['lat'] as num).toDouble(),
       lng: (map['lng'] as num).toDouble(),
-      limit: map['limit'] as int,
+      limit: map['limit'] as int?,
       direction: map['direction'] as int?,
       status: SpeedCameraStatus.fromValue(map['status'] as String),
       source: SpeedCameraSource.fromValue(map['source'] as String),
@@ -54,7 +54,7 @@ class SpeedCamera {
   final String id;
   final double lat;
   final double lng;
-  final int limit;
+  final int? limit;
   final int? direction;
   final SpeedCameraStatus status;
   final SpeedCameraSource source;
@@ -67,7 +67,7 @@ class SpeedCamera {
     return {
       'lat': lat,
       'lng': lng,
-      'limit': limit,
+      if (limit != null) 'limit': limit,
       if (direction != null) 'direction': direction,
       'status': status.name,
       'source': source.name,

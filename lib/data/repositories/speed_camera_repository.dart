@@ -71,4 +71,14 @@ class SpeedCameraRepository {
       'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
   }
+
+  /// Inserts or refreshes an OSM-sourced camera, keyed by its OSM node id
+  /// (`camera.id`) so re-syncing the same node updates it in place instead
+  /// of duplicating it (features.md 5.2, step 1). `createdAt` is left
+  /// untouched by design: an OSM node's real creation date lives in OSM's
+  /// own history, not ours.
+  Future<void> upsertOsmCamera(SpeedCamera camera) {
+    final data = camera.toMap()..['updatedAt'] = Timestamp.fromDate(DateTime.now());
+    return _collection.doc(camera.id).set(data, SetOptions(merge: true));
+  }
 }

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'models/sync_metadata.dart';
 import 'models/user_settings.dart';
 import 'repositories/blacklist_repository.dart';
 import 'repositories/settings_repository.dart';
@@ -34,4 +35,8 @@ final userSettingsProvider = StreamProvider<UserSettings>((ref) {
   final user = ref.watch(authStateProvider).value;
   if (user == null) return Stream.value(const UserSettings());
   return ref.watch(settingsRepositoryProvider).watchSettings(user.uid);
+});
+
+final syncMetadataProvider = StreamProvider<SyncMetadata>((ref) {
+  return ref.watch(settingsRepositoryProvider).watchGlobalSyncMetadata();
 });

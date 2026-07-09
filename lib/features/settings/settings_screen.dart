@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/user_avatar.dart';
 import '../../data/models/user_settings.dart';
 import '../../data/providers.dart';
+import 'osm_auth_section.dart';
+import 'osm_sync_section.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -114,6 +116,13 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
           value: _settings.toleranceFilterEnabled,
           onChanged: (value) => _applyChange((s) => s.copyWith(toleranceFilterEnabled: value)),
         ),
+        const Divider(height: 32),
+        OsmSyncSection(
+          selectedRegions: _settings.osmSyncRegions,
+          onRegionsChanged: (regions) => _applyChange((s) => s.copyWith(osmSyncRegions: regions)),
+        ),
+        const Divider(height: 32),
+        const OsmAuthSection(),
       ],
     );
   }
