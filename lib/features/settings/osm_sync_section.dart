@@ -29,10 +29,15 @@ class _OsmSyncSectionState extends ConsumerState<OsmSyncSection> {
   bool _isSyncing = false;
   String? _resultMessage;
 
-  void _toggleRegion(String region, bool selected) {
-    final updated = [...widget.selectedRegions];
-    selected ? updated.add(region) : updated.remove(region);
-    widget.onRegionsChanged(updated);
+  Future<void> _openRegionPicker() {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _RegionPickerSheet(
+        initialSelectedRegions: widget.selectedRegions,
+        onRegionsChanged: widget.onRegionsChanged,
+      ),
+    );
   }
 
   Future<void> _sync() async {
@@ -48,24 +53,38 @@ class _OsmSyncSectionState extends ConsumerState<OsmSyncSection> {
     final overpass = OverpassService();
     final repository = ref.read(speedCameraRepositoryProvider);
     var totalSynced = 0;
-    try {
-      for (final region in widget.selectedRegions) {
+    final failedRegions = <String>[];
+
+    // One region's failure (e.g. a 504 from an overloaded Overpass server)
+    // does not abort the rest — otherwise a single bad region silently ate
+    // every other region too, which looked like "sync did nothing".
+    for (final region in widget.selectedRegions) {
+      try {
         final cameras = await overpass.fetchSpeedCameras(region);
         for (final camera in cameras) {
           await repository.upsertOsmCamera(camera);
         }
         totalSynced += cameras.length;
+      } catch (_) {
+        failedRegions.add(region);
       }
+    }
+
+    if (failedRegions.length < widget.selectedRegions.length) {
+      // Record the sync even on a partial failure — the Smart Reminder is
+      // about "have you synced recently", not "did every region succeed".
       await ref.read(settingsRepositoryProvider).recordSync(camerasSynced: totalSynced);
-      if (mounted) {
-        setState(() => _resultMessage =
-            'Sincronizzati $totalSynced autovelox in ${widget.selectedRegions.length} '
-            'region${widget.selectedRegions.length == 1 ? 'e' : 'i'}.');
-      }
-    } catch (e) {
-      if (mounted) setState(() => _resultMessage = 'Sincronizzazione non riuscita: $e');
-    } finally {
-      if (mounted) setState(() => _isSyncing = false);
+    }
+
+    if (mounted) {
+      setState(() {
+        _resultMessage = failedRegions.isEmpty
+            ? 'Sincronizzati $totalSynced autovelox in ${widget.selectedRegions.length} '
+                'region${widget.selectedRegions.length == 1 ? 'e' : 'i'}.'
+            : 'Sincronizzati $totalSynced autovelox. Non riuscite: ${failedRegions.join(', ')} '
+                '(riprova più tardi, Overpass potrebbe essere sovraccarico).';
+        _isSyncing = false;
+      });
     }
   }
 
@@ -82,18 +101,16 @@ class _OsmSyncSectionState extends ConsumerState<OsmSyncSection> {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: italianRegions
-              .map(
-                (region) => FilterChip(
-                  label: Text(region),
-                  selected: widget.selectedRegions.contains(region),
-                  onSelected: _isSyncing ? null : (selected) => _toggleRegion(region, selected),
-                ),
-              )
-              .toList(),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            widget.selectedRegions.isEmpty
+                ? 'Nessuna regione selezionata'
+                : widget.selectedRegions.join(', '),
+          ),
+          subtitle: Text('${widget.selectedRegions.length} regioni selezionate'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _isSyncing ? null : _openRegionPicker,
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
@@ -112,6 +129,66 @@ class _OsmSyncSectionState extends ConsumerState<OsmSyncSection> {
           Text(_resultMessage!, style: Theme.of(context).textTheme.bodySmall),
         ],
       ],
+    );
+  }
+}
+
+class _RegionPickerSheet extends StatefulWidget {
+  const _RegionPickerSheet({
+    required this.initialSelectedRegions,
+    required this.onRegionsChanged,
+  });
+
+  final List<String> initialSelectedRegions;
+  final ValueChanged<List<String>> onRegionsChanged;
+
+  @override
+  State<_RegionPickerSheet> createState() => _RegionPickerSheetState();
+}
+
+class _RegionPickerSheetState extends State<_RegionPickerSheet> {
+  late final List<String> _selected = [...widget.initialSelectedRegions];
+
+  void _toggle(String region, bool selected) {
+    setState(() => selected ? _selected.add(region) : _selected.remove(region));
+    widget.onRegionsChanged(_selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Regioni da sincronizzare', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: italianRegions
+                  .map(
+                    (region) => FilterChip(
+                      label: Text(region),
+                      selected: _selected.contains(region),
+                      onSelected: (selected) => _toggle(region, selected),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Fatto'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

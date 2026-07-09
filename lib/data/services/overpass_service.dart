@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -70,9 +71,14 @@ class OverpassService {
   static const String _userAgent = 'AutoveloxApp/1.0';
 
   Future<List<SpeedCamera>> fetchSpeedCameras(String regionName) async {
+    // Matched on `name:it`, not the plain `name` tag: OSM's `name` on two of
+    // the 20 regions is the official bilingual form ("Trentino-Alto
+    // Adige/Südtirol", "Valle d'Aosta / Vallée d'Aoste"), which never equals
+    // the plain Italian name in `italianRegions` and silently returns zero
+    // results. `name:it` is the plain Italian name for all 20.
     final query = '''
 [out:json][timeout:60];
-area["name"="$regionName"]["admin_level"="4"]["boundary"="administrative"]->.searchArea;
+area["name:it"="$regionName"]["admin_level"="4"]["boundary"="administrative"]->.searchArea;
 (
   node["highway"="speed_camera"](area.searchArea);
   node["enforcement"="maxspeed"](area.searchArea);
@@ -80,13 +86,29 @@ area["name"="$regionName"]["admin_level"="4"]["boundary"="administrative"]->.sea
 out body;
 ''';
 
-    final response = await _client.post(
-      Uri.parse(_endpoint),
-      headers: {'User-Agent': _userAgent},
-      body: {'data': query},
-    );
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            Uri.parse(_endpoint),
+            headers: {'User-Agent': _userAgent},
+            body: {'data': query},
+          )
+          // The query itself asks Overpass for [timeout:60]; this client-side
+          // bound is only there so a hung connection (no response at all,
+          // e.g. flaky mobile data) fails loudly instead of leaving the sync
+          // button spinning forever.
+          .timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      throw OverpassException(
+        'Nessuna risposta da Overpass per $regionName dopo 90 secondi (rete lenta o server irraggiungibile).',
+      );
+    }
+
     if (response.statusCode != 200) {
-      throw OverpassException('Overpass ha risposto ${response.statusCode}');
+      // 504 = Overpass's own [timeout:60] expired server-side (it's busy or
+      // the region is too large) — retrying, possibly later, is the only fix.
+      throw OverpassException('Overpass ha risposto ${response.statusCode} per $regionName');
     }
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
