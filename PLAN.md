@@ -99,8 +99,8 @@ res/xml/automotive_app_desc.xml  # dichiarazione app Android Auto (categoria, mi
 |---|---|---|
 | **0 — Fondamenta** | Riverpod, struttura cartelle Dart, modelli dati, repository Firestore, regole di sicurezza base, `geo.dart` (haversine + geohash), auth Google/ospite | ✅ Completata |
 | **1 — Mappa & CRUD (telefono)** | `google_maps_flutter`, marker colorati per stato/sorgente, inserimento (long-press/FAB) con limite da preset + direzione, cancellazione propri marker, query "camere in vista" via geohash | ✅ Completata |
-| **2 — Impostazioni** | Slider distanza (fissa/dinamica), toggle filtro tolleranza, persistiti su `users/{uid}.settings` | ⬜ Prossima |
-| **3 — Integrazione OSM (telefono)** | Sync manuale Overpass → Firestore, Smart Reminder 7gg, login OAuth2 OSM, pubblicazione changeset | ⬜ |
+| **2 — Impostazioni** | Slider distanza (fissa/dinamica), toggle filtro tolleranza, persistiti su `users/{uid}.settings` | ✅ Completata |
+| **3 — Integrazione OSM (telefono)** | Sync manuale Overpass → Firestore, Smart Reminder 7gg, login OAuth2 OSM, pubblicazione changeset | ⬜ Prossima |
 | **4 — Blacklist & revisione** | Sottocollezione `ignored_cameras`, banner di conferma su avvio app per elementi `pending` catturati da Android Auto, promozione a `approved` | ⬜ |
 | **5 — Fondamenta Android Auto** | `AutoveloxCarAppService`/`Session`/`Screen` scheletro, `automotive_app_desc.xml`, manifest, prima schermata lista camere vicine, test su Desktop Head Unit (DHU) | ⬜ |
 | **6 — Logica di guida nativa** | `CameraProximityService`: GPS+heading, query geohash, `ProximityCalculator`, `ToleranceFilter`, card di allarme, TTS + audio focus via `CarContext`, i due pulsanti azione (Ignora/Segnala) → scritture Firestore | ⬜ |

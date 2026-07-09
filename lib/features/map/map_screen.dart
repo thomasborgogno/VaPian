@@ -6,8 +6,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart' as loc;
 
 import '../../core/utils/geo.dart';
+import '../../core/widgets/user_avatar.dart';
 import '../../data/models/speed_camera.dart';
 import '../../data/providers.dart';
+import '../settings/settings_screen.dart';
 import 'draft_marker_painter.dart';
 import 'map_viewport.dart';
 import 'marker_style.dart';
@@ -395,8 +397,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         title: const Text('Autovelox App'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => ref.read(authServiceProvider).signOut(),
+            icon: UserAvatar(user: ref.watch(authStateProvider).value),
+            tooltip: 'Impostazioni',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const SettingsScreen()),
+            ),
           ),
         ],
       ),
