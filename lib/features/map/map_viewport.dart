@@ -34,9 +34,17 @@ final mapViewportProvider = NotifierProvider<MapViewportNotifier, MapViewport>(
   MapViewportNotifier.new,
 );
 
+/// How many times larger than the visible radius to query — cameras this far
+/// outside the screen are preloaded so that panning never reveals a blank area.
+const double viewportPrefetchMultiplier = 3.0;
+
 final nearbyCamerasProvider = StreamProvider.autoDispose<List<SpeedCamera>>((ref) {
   final viewport = ref.watch(mapViewportProvider);
   return ref
       .watch(speedCameraRepositoryProvider)
-      .watchNear(viewport.latitude, viewport.longitude, viewport.radiusMeters);
+      .watchNear(
+        viewport.latitude,
+        viewport.longitude,
+        viewport.radiusMeters * viewportPrefetchMultiplier,
+      );
 });

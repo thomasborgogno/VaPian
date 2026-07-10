@@ -12,6 +12,7 @@ import '../../data/providers.dart';
 import '../../data/services/osm_auth_service.dart';
 import '../../data/services/osm_edit_service.dart';
 import '../settings/settings_screen.dart';
+import 'dot_marker_icons.dart';
 import 'draft_marker_painter.dart';
 import 'map_style_config.dart';
 import 'map_viewport.dart';
@@ -19,6 +20,11 @@ import 'marker_style.dart';
 import 'speed_camera_marker_icons.dart';
 
 const List<int> _speedLimitPresets = [30, 50, 70, 90, 110, 130];
+
+/// Below this zoom, cameras render as a small colored dot instead of the
+/// full camera glyph — with clustering disabled, this is what keeps a
+/// zoomed-out, camera-dense view legible and cheap to draw.
+const double _dotZoomThreshold = 10;
 
 /// Fixed on-screen distance (logical px) between a draft marker and its
 /// direction handle — independent of zoom, so it always reads clearly.
@@ -86,32 +92,59 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     MapViewport.initial.latitude,
     MapViewport.initial.longitude,
   );
-  final Map<Color, BitmapDescriptor> _cameraIcons = {};
   _CameraDraft? _draft;
   Offset? _draftScreenPosition;
   PersistentBottomSheetController? _sheetController;
   double _currentZoom = 14;
   bool _syncReminderDismissed = false;
 
+  List<SpeedCamera> _allCameras = [];
+  Set<Marker> _markers = {};
+  bool _showDots = false;
+
+  /// Last center for which a Firestore query was issued — used to suppress
+  /// re-queries when the user barely moves the map.
+  MapViewport? _lastQueriedViewport;
+
   @override
   void initState() {
     super.initState();
     _resolveInitialPosition();
-    _loadIcons();
   }
 
-  Future<void> _loadIcons() async {
-    final results = await Future.wait([
-      SpeedCameraMarkerIcons.forColor(speedCameraGreen),
-      SpeedCameraMarkerIcons.forColor(speedCameraBlue),
-      SpeedCameraMarkerIcons.forColor(speedCameraOrange),
-    ]);
+  /// Rebuilds every camera marker directly (no clustering) — dots
+  /// below [_dotZoomThreshold], full glyphs above it. Called whenever the
+  /// camera list changes, whenever a draft edit starts/ends, and whenever
+  /// the zoom crosses the dot threshold.
+  Future<void> _rebuildMarkers() async {
+    final draft = _draft;
+    final cameras = draft == null
+        ? _allCameras
+        : _allCameras.where((c) => c.id != draft.existingId).toList();
+
+    final markers = await Future.wait(cameras.map(_buildMarkerForCamera));
     if (!mounted) return;
-    setState(() {
-      _cameraIcons[speedCameraGreen] = results[0];
-      _cameraIcons[speedCameraBlue] = results[1];
-      _cameraIcons[speedCameraOrange] = results[2];
-    });
+    setState(() => _markers = markers.toSet());
+  }
+
+  Future<Marker> _buildMarkerForCamera(SpeedCamera camera) async {
+    final color = markerColorFor(camera);
+    if (_showDots) {
+      return Marker(
+        markerId: MarkerId(camera.id),
+        position: LatLng(camera.lat, camera.lng),
+        icon: await DotMarkerIcons.forColor(color),
+        onTap: () => _onMarkerTap(camera),
+      );
+    }
+    return Marker(
+      markerId: MarkerId(camera.id),
+      position: LatLng(camera.lat, camera.lng),
+      icon: await SpeedCameraMarkerIcons.forColor(color, hasDirection: camera.direction != null),
+      anchor: SpeedCameraMarkerIcons.anchor,
+      rotation: camera.direction?.toDouble() ?? 0,
+      onTap: () => _onMarkerTap(camera),
+    );
   }
 
   Future<void> _resolveInitialPosition() async {
@@ -155,16 +188,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       bounds.northeast.latitude,
       bounds.northeast.longitude,
     );
-    ref.read(mapViewportProvider.notifier).update(
-      MapViewport(latitude: centerLat, longitude: centerLng, radiusMeters: radiusMeters),
-    );
+
+    // Skip the re-query if the new center is still well inside the already-
+    // prefetched area (prefetch = 3× the visible radius).  We only issue a new
+    // query when the user has moved far enough that the prefetch buffer shrinks
+    // to less than one visible-radius worth of margin.
+    final last = _lastQueriedViewport;
+    if (last != null) {
+      final movedMeters = haversineDistanceMeters(
+        last.latitude, last.longitude, centerLat, centerLng,
+      );
+      // Prefetched radius = last.radiusMeters * 3; visible radius = radiusMeters.
+      // Remaining buffer = prefetched – moved – visible.  Re-query when < 0.
+      final remainingBuffer = last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
+      if (remainingBuffer >= radiusMeters) return;
+    }
+
+    final newViewport = MapViewport(latitude: centerLat, longitude: centerLng, radiusMeters: radiusMeters);
+    _lastQueriedViewport = newViewport;
+    ref.read(mapViewportProvider.notifier).update(newViewport);
   }
 
   void _onCameraMove(CameraPosition position) {
     _currentZoom = position.zoom;
+    final shouldShowDots = _currentZoom < _dotZoomThreshold;
+    if (shouldShowDots != _showDots) {
+      _showDots = shouldShowDots;
+      _rebuildMarkers();
+    }
     if (_draft != null) {
       _syncDraftScreenPosition();
     }
+  }
+
+  void _onCameraIdle() {
+    _refreshViewport();
   }
 
   /// Re-projects the draft's lat/lng anchor to screen coordinates — needed
@@ -209,6 +267,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
       _draftScreenPosition = Offset(screenCoordinate.x / ratio, screenCoordinate.y / ratio);
     });
+    _rebuildMarkers();
 
     _sheetController = _scaffoldKey.currentState!.showBottomSheet(
       (context) => _DraftSheet(
@@ -225,6 +284,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           _draft = null;
           _draftScreenPosition = null;
         });
+        _rebuildMarkers();
       }
     });
   }
@@ -383,22 +443,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     await _startDraft(position: center);
   }
 
-  Set<Marker> _buildMarkers(List<SpeedCamera> cameras) {
-    final draft = _draft;
-    return {
-      for (final camera in cameras)
-        if (draft == null || draft.existingId != camera.id)
-          Marker(
-            markerId: MarkerId(camera.id),
-            position: LatLng(camera.lat, camera.lng),
-            icon: _cameraIcons[markerColorFor(camera)] ?? BitmapDescriptor.defaultMarker,
-            anchor: SpeedCameraMarkerIcons.anchor,
-            rotation: camera.direction?.toDouble() ?? 0,
-            onTap: () => _onMarkerTap(camera),
-          ),
-    };
-  }
-
   Widget _buildDraftOverlay() {
     final draft = _draft!;
     final markerPosition = _draftScreenPosition!;
@@ -451,8 +495,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final camerasAsync = ref.watch(nearbyCamerasProvider);
-    final markers = _buildMarkers(camerasAsync.value ?? const []);
+    ref.listen(nearbyCamerasProvider, (previous, next) {
+      final cameras = next.value;
+      if (cameras == null) return;
+      _allCameras = cameras;
+      _rebuildMarkers();
+    });
+    final markers = _markers;
     final draft = _draft;
     final syncMetadata = ref.watch(syncMetadataProvider).value;
     final showSyncReminder =
@@ -497,7 +546,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               _refreshViewport();
             },
             onCameraMove: _onCameraMove,
-            onCameraIdle: _refreshViewport,
+            onCameraIdle: _onCameraIdle,
             onLongPress: (position) => _startDraft(position: position),
           ),
           if (draft != null) _buildDraftOverlay(),
