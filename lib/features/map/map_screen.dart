@@ -12,24 +12,26 @@ import '../../data/providers.dart';
 import '../../data/services/osm_auth_service.dart';
 import '../../data/services/osm_edit_service.dart';
 import '../settings/settings_screen.dart';
+import 'camera_details_sheet.dart';
+import 'camera_draft.dart';
+import 'camera_filter.dart';
 import 'dot_marker_icons.dart';
-import 'draft_marker_painter.dart';
+import 'draft_overlay.dart';
+import 'draft_sheet.dart';
+import 'filter_sheet.dart';
 import 'map_style_config.dart';
 import 'map_viewport.dart';
 import 'marker_style.dart';
+import 'pending_cameras_banner.dart';
+import 'pending_review_sheet.dart';
 import 'speed_camera_marker_icons.dart';
-
-const List<int> _speedLimitPresets = [30, 50, 70, 90, 110, 130];
+import 'speed_limit_presets.dart';
+import 'sync_reminder_banner.dart';
 
 /// Below this zoom, cameras render as a small colored dot instead of the
 /// full camera glyph — with clustering disabled, this is what keeps a
 /// zoomed-out, camera-dense view legible and cheap to draw.
 const double _dotZoomThreshold = 10;
-
-/// Fixed on-screen distance (logical px) between a draft marker and its
-/// direction handle — independent of zoom, so it always reads clearly.
-const double _handleDistancePx = 70;
-const double _handleDotRadius = 14;
 
 /// Web Mercator ground resolution at zoom 0, tile size 256 — used to convert
 /// a drag delta in screen pixels into a lat/lng delta without any async
@@ -44,89 +46,6 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-/// A speed camera being placed or edited directly on the map: position and
-/// direction come from dragging the marker/handle overlay, only the speed
-/// limit is picked from the bottom sheet.
-class _CameraDraft {
-  const _CameraDraft({
-    required this.position,
-    required this.direction,
-    required this.limit,
-    this.existingId,
-    this.existingSource,
-    this.existingStatus,
-    this.canPublishToOsm = false,
-  });
-
-  final LatLng position;
-  final double direction;
-  final int limit;
-  final String? existingId;
-  final SpeedCameraSource? existingSource;
-  final SpeedCameraStatus? existingStatus;
-
-  /// True only when editing an existing `source: 'user'`, `status: 'pending'`
-  /// report and the user has an OpenStreetMap account linked
-  /// (features.md 4) — computed once in `_startDraft`.
-  final bool canPublishToOsm;
-
-  bool get isNew => existingId == null;
-
-  _CameraDraft copyWith({LatLng? position, double? direction}) {
-    return _CameraDraft(
-      position: position ?? this.position,
-      direction: direction ?? this.direction,
-      limit: limit,
-      existingId: existingId,
-      existingSource: existingSource,
-      existingStatus: existingStatus,
-      canPublishToOsm: canPublishToOsm,
-    );
-  }
-}
-
-/// Map-screen-local camera filter (session state, not persisted): a whitelist
-/// of speed limits plus two independent toggles. When [showIgnoredOnly] is
-/// on it takes over entirely — only cameras the user has ignored are shown
-/// (in grey), letting them be tapped to restore; the speed-limit criteria
-/// below don't apply in that mode.
-class _CameraFilter {
-  const _CameraFilter({
-    this.limits = const {},
-    this.showUnknownLimit = false,
-    this.showIgnoredOnly = false,
-  });
-
-  /// Empty means "no restriction" — every known limit passes.
-  final Set<int> limits;
-
-  /// Whether cameras with no recorded speed limit pass the filter — only
-  /// meaningful once [limits] is non-empty, defaults to false.
-  final bool showUnknownLimit;
-
-  final bool showIgnoredOnly;
-
-  bool get isActive => limits.isNotEmpty || showIgnoredOnly;
-
-  bool matchesLimit(SpeedCamera camera) {
-    if (limits.isEmpty) return true;
-    if (camera.limit == null) return showUnknownLimit;
-    return limits.contains(camera.limit);
-  }
-
-  _CameraFilter copyWith({
-    Set<int>? limits,
-    bool? showUnknownLimit,
-    bool? showIgnoredOnly,
-  }) {
-    return _CameraFilter(
-      limits: limits ?? this.limits,
-      showUnknownLimit: showUnknownLimit ?? this.showUnknownLimit,
-      showIgnoredOnly: showIgnoredOnly ?? this.showIgnoredOnly,
-    );
-  }
-}
-
 class _MapScreenState extends ConsumerState<MapScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   GoogleMapController? _controller;
@@ -134,7 +53,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     MapViewport.initial.latitude,
     MapViewport.initial.longitude,
   );
-  _CameraDraft? _draft;
+  CameraDraft? _draft;
   Offset? _draftScreenPosition;
   PersistentBottomSheetController? _sheetController;
   double _currentZoom = 14;
@@ -143,7 +62,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   List<SpeedCamera> _allCameras = [];
   Set<Marker> _markers = {};
   bool _showDots = false;
-  _CameraFilter _filter = const _CameraFilter();
+  CameraFilter _filter = const CameraFilter();
 
   /// Last center for which a Firestore query was issued — used to suppress
   /// re-queries when the user barely moves the map.
@@ -157,8 +76,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// Rebuilds every camera marker directly (no clustering) — dots
   /// below [_dotZoomThreshold], full glyphs above it. Called whenever the
-  /// camera list changes, whenever a draft edit starts/ends, and whenever
-  /// the zoom crosses the dot threshold.
+  /// camera list changes, whenever a draft edit starts/ends, whenever the
+  /// zoom crosses the dot threshold, and whenever the filter changes.
   Future<void> _rebuildMarkers() async {
     final ignoredIds = ref.read(ignoredCameraIdsProvider).value ?? {};
     final draft = _draft;
@@ -305,10 +224,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final ratio = MediaQuery.of(context).devicePixelRatio;
 
     setState(() {
-      _draft = _CameraDraft(
+      _draft = CameraDraft(
         position: position,
         direction: (existing?.direction ?? 0).toDouble(),
-        limit: existing?.limit ?? _speedLimitPresets[1],
+        limit: existing?.limit ?? speedLimitPresets[1],
         existingId: existing?.id,
         existingSource: existing?.source,
         existingStatus: existing?.status,
@@ -320,7 +239,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final isPending = existing?.status == SpeedCameraStatus.pending;
     _sheetController = _scaffoldKey.currentState!.showBottomSheet(
-      (context) => _DraftSheet(
+      (context) => DraftSheet(
         initialLimit: _draft!.limit,
         onSave: _saveDraft,
         onCancel: _closeDraft,
@@ -467,7 +386,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // Tangential component of the drag, perpendicular to the current
     // handle direction, turned into an angle change around the marker.
     final tangential = details.delta.dx * cos(thetaRad) + details.delta.dy * sin(thetaRad);
-    final deltaAngleDeg = tangential / _handleDistancePx * 180 / pi;
+    final deltaAngleDeg = tangential / DraftOverlay.handleDistancePx * 180 / pi;
     final newDirection = ((draft.direction + deltaAngleDeg) % 360 + 360) % 360;
     setState(() => _draft = draft.copyWith(direction: newDirection));
   }
@@ -506,7 +425,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     return showModalBottomSheet<void>(
       context: context,
-      builder: (context) => _CameraDetailsSheet(
+      builder: (context) => CameraDetailsSheet(
         camera: camera,
         isIgnored: isIgnored,
         onIgnore: ignoreCallback,
@@ -527,61 +446,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     await _startDraft(position: center);
   }
 
-  Widget _buildDraftOverlay() {
-    final draft = _draft!;
-    final markerPosition = _draftScreenPosition!;
-    final theta = draft.direction * pi / 180;
-    final handlePosition = markerPosition +
-        Offset(_handleDistancePx * sin(theta), -_handleDistancePx * cos(theta));
-
-    return Stack(
-      children: [
-        Positioned(
-          left: markerPosition.dx - SpeedCameraMarkerIcons.width / 2,
-          top: markerPosition.dy - SpeedCameraMarkerIcons.anchor.dy * SpeedCameraMarkerIcons.height,
-          child: GestureDetector(
-            onPanUpdate: _onMarkerPanUpdate,
-            child: SizedBox(
-              width: SpeedCameraMarkerIcons.width,
-              height: SpeedCameraMarkerIcons.height,
-              child: CustomPaint(
-                painter: DraftMarkerPainter(color: speedCameraOrange, rotationDegrees: draft.direction),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: handlePosition.dx - _handleDotRadius,
-          top: handlePosition.dy - _handleDotRadius,
-          child: GestureDetector(
-            onPanUpdate: _onHandlePanUpdate,
-            child: Container(
-              width: _handleDotRadius * 2,
-              height: _handleDotRadius * 2,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(color: Colors.deepPurple, width: 3),
-              ),
-              child: Center(
-                child: Container(
-                  width: _handleDotRadius,
-                  height: _handleDotRadius,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   void _showFilterSheet() {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _FilterSheet(
+      builder: (context) => FilterSheet(
         initialFilter: _filter,
         onFilterChanged: (filter) {
           setState(() => _filter = filter);
@@ -595,7 +464,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _PendingReviewSheet(
+      builder: (context) => PendingReviewSheet(
         onEdit: (camera) {
           Navigator.of(context).pop();
           _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
@@ -671,7 +540,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             onCameraIdle: _onCameraIdle,
             onLongPress: (position) => _startDraft(position: position),
           ),
-          if (draft != null) _buildDraftOverlay(),
+          if (draft != null && _draftScreenPosition != null)
+            DraftOverlay(
+              draft: draft,
+              markerPosition: _draftScreenPosition!,
+              onMarkerPanUpdate: _onMarkerPanUpdate,
+              onHandlePanUpdate: _onHandlePanUpdate,
+            ),
           if (showSyncReminder || showPendingBanner)
             Positioned(
               top: 0,
@@ -681,7 +556,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (showSyncReminder)
-                    _SyncReminderBanner(
+                    SyncReminderBanner(
                       onSync: () {
                         setState(() => _syncReminderDismissed = true);
                         Navigator.of(context).push(
@@ -691,7 +566,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       onDismiss: () => setState(() => _syncReminderDismissed = true),
                     ),
                   if (showPendingBanner)
-                    _PendingCamerasBanner(
+                    PendingCamerasBanner(
                       count: pendingCount,
                       onReview: _showPendingReview,
                     ),
@@ -707,485 +582,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               child: const Icon(Icons.add),
             )
           : null,
-    );
-  }
-}
-
-/// features.md 2.2 Smart Reminder: shown when the global OSM sync is more
-/// than 7 days old (or has never run) — dismissing it is per-session only,
-/// it comes back next time the map screen is rebuilt while still stale.
-class _SyncReminderBanner extends StatelessWidget {
-  const _SyncReminderBanner({required this.onSync, required this.onDismiss});
-
-  final VoidCallback onSync;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Material(
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'I dati degli autovelox potrebbero non essere aggiornati. '
-                  'Sincronizza ora con OpenStreetMap.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              TextButton(onPressed: onSync, child: const Text('Sincronizza')),
-              IconButton(
-                icon: const Icon(Icons.close),
-                iconSize: 18,
-                onPressed: onDismiss,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DraftSheet extends StatefulWidget {
-  const _DraftSheet({
-    required this.initialLimit,
-    required this.onSave,
-    required this.onCancel,
-    this.onDelete,
-    this.onApprove,
-    this.onPublishToOsm,
-  });
-
-  final int initialLimit;
-  final ValueChanged<int> onSave;
-  final VoidCallback onCancel;
-  final VoidCallback? onDelete;
-
-  /// Non-null when editing a pending user camera — confirms it as correct
-  /// without publishing to OSM (features.md 2.1).
-  final ValueChanged<int>? onApprove;
-
-  /// Non-null only when editing an own pending report with OpenStreetMap
-  /// linked (features.md 4) — takes the currently selected limit, like
-  /// [onSave].
-  final ValueChanged<int>? onPublishToOsm;
-
-  @override
-  State<_DraftSheet> createState() => _DraftSheetState();
-}
-
-class _DraftSheetState extends State<_DraftSheet> {
-  late int _limit = widget.initialLimit;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Limite di velocità'),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _speedLimitPresets
-                    .map(
-                      (preset) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text('$preset'),
-                          selected: _limit == preset,
-                          onSelected: (_) => setState(() => _limit = preset),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                if (widget.onDelete != null) ...[
-                  IconButton(
-                    onPressed: widget.onDelete,
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Elimina',
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: widget.onCancel,
-                    child: const Text('Annulla'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => widget.onSave(_limit),
-                    child: const Text('Salva'),
-                  ),
-                ),
-              ],
-            ),
-            if (widget.onApprove != null) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => widget.onApprove!(_limit),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Approva segnalazione'),
-                ),
-              ),
-            ],
-            if (widget.onPublishToOsm != null) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => widget.onPublishToOsm!(_limit),
-                  icon: const Icon(Icons.public),
-                  label: const Text('Pubblica su OpenStreetMap'),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CameraDetailsSheet extends StatelessWidget {
-  const _CameraDetailsSheet({
-    required this.camera,
-    required this.isIgnored,
-    this.onIgnore,
-    this.onUnignore,
-  });
-
-  final SpeedCamera camera;
-  final bool isIgnored;
-  final VoidCallback? onIgnore;
-  final VoidCallback? onUnignore;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            camera.limit != null ? 'Autovelox ${camera.limit} km/h' : 'Autovelox (limite non disponibile)',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Sorgente: ${camera.source == SpeedCameraSource.openstreetmap ? 'OpenStreetMap' : 'Utente'}',
-          ),
-          Text(
-            'Stato: ${camera.status == SpeedCameraStatus.approved ? 'Approvato' : 'In verifica'}',
-          ),
-          if (camera.direction != null) Text('Direzione: ${camera.direction}°'),
-          if (onIgnore != null || onUnignore != null) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: isIgnored
-                  ? OutlinedButton.icon(
-                      onPressed: onUnignore,
-                      icon: const Icon(Icons.visibility),
-                      label: const Text('Togli dagli ignorati'),
-                    )
-                  : OutlinedButton.icon(
-                      onPressed: onIgnore,
-                      icon: const Icon(Icons.visibility_off),
-                      label: const Text('Ignora questo velox'),
-                    ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PendingCamerasBanner extends StatelessWidget {
-  const _PendingCamerasBanner({required this.count, required this.onReview});
-
-  final int count;
-  final VoidCallback onReview;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Material(
-        color: Theme.of(context).colorScheme.primaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              const Icon(Icons.pending_actions, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  count == 1
-                      ? 'Hai 1 segnalazione in attesa di revisione.'
-                      : 'Hai $count segnalazioni in attesa di revisione.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              TextButton(onPressed: onReview, child: const Text('Rivedi')),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom sheet listing all pending own cameras so the user can approve,
-/// edit, or delete them (features.md 2.1 "Banner di Conferma Android Auto").
-class _PendingReviewSheet extends ConsumerWidget {
-  const _PendingReviewSheet({required this.onEdit});
-
-  final void Function(SpeedCamera) onEdit;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cameras = ref.watch(pendingOwnCamerasProvider).value ?? [];
-    final uid = ref.watch(authStateProvider).value?.uid;
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.5,
-      maxChildSize: 0.9,
-      minChildSize: 0.3,
-      expand: false,
-      builder: (_, scrollController) => SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: cameras.isEmpty
-                  ? Text(
-                      'Tutte le segnalazioni revisionate.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    )
-                  : Text(
-                      'Segnalazioni in attesa (${cameras.length})',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-            ),
-            Expanded(
-              child: cameras.isEmpty
-                  ? const SizedBox.shrink()
-                  : ListView.builder(
-                      controller: scrollController,
-                      itemCount: cameras.length,
-                      itemBuilder: (_, i) {
-                        final camera = cameras[i];
-                        return ListTile(
-                          leading: const Icon(Icons.speed),
-                          title: Text(
-                            camera.limit != null ? '${camera.limit} km/h' : 'Limite sconosciuto',
-                          ),
-                          subtitle: Text(
-                            '${camera.lat.toStringAsFixed(5)}, ${camera.lng.toStringAsFixed(5)}',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.check_circle_outline),
-                                tooltip: 'Approva',
-                                onPressed: uid == null
-                                    ? null
-                                    : () => ref
-                                        .read(speedCameraRepositoryProvider)
-                                        .updateStatus(camera.id, SpeedCameraStatus.approved),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined),
-                                tooltip: 'Modifica sulla mappa',
-                                onPressed: () => onEdit(camera),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip: 'Elimina',
-                                onPressed: uid == null
-                                    ? null
-                                    : () => ref
-                                        .read(speedCameraRepositoryProvider)
-                                        .deleteCamera(camera.id),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Chiudi'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Filter sheet for the map's camera markers: a speed-limit whitelist
-/// (+ "show unknown limit") and a separate "show ignored only" mode. Changes
-/// apply live via [onFilterChanged] as the user toggles chips/switches, so
-/// the map underneath updates without waiting for the sheet to close —
-/// same pattern as `_RegionPickerSheet` in osm_sync_section.dart.
-class _FilterSheet extends StatefulWidget {
-  const _FilterSheet({required this.initialFilter, required this.onFilterChanged});
-
-  final _CameraFilter initialFilter;
-  final ValueChanged<_CameraFilter> onFilterChanged;
-
-  @override
-  State<_FilterSheet> createState() => _FilterSheetState();
-}
-
-class _FilterSheetState extends State<_FilterSheet> {
-  late Set<int> _limits = {...widget.initialFilter.limits};
-  late bool _showUnknownLimit = widget.initialFilter.showUnknownLimit;
-  late bool _showIgnoredOnly = widget.initialFilter.showIgnoredOnly;
-
-  void _emit() {
-    widget.onFilterChanged(
-      _CameraFilter(
-        limits: _limits,
-        showUnknownLimit: _showUnknownLimit,
-        showIgnoredOnly: _showIgnoredOnly,
-      ),
-    );
-  }
-
-  void _clear() {
-    setState(() {
-      _limits = {};
-      _showUnknownLimit = false;
-      _showIgnoredOnly = false;
-    });
-    _emit();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isActive = _limits.isNotEmpty || _showIgnoredOnly;
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('Filtra autovelox', style: Theme.of(context).textTheme.titleMedium),
-                if (isActive) ...[
-                  const SizedBox(width: 8),
-                  Chip(
-                    label: const Text('Attivo'),
-                    visualDensity: VisualDensity.compact,
-                    labelStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text('Limite di velocità'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: _speedLimitPresets
-                  .map(
-                    (preset) => FilterChip(
-                      label: Text('$preset'),
-                      selected: _limits.contains(preset),
-                      onSelected: _showIgnoredOnly
-                          ? null
-                          : (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _limits.add(preset);
-                                } else {
-                                  _limits.remove(preset);
-                                }
-                              });
-                              _emit();
-                            },
-                    ),
-                  )
-                  .toList(),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Mostra velox senza limite noto'),
-              value: _showUnknownLimit,
-              onChanged: _showIgnoredOnly
-                  ? null
-                  : (value) {
-                      setState(() => _showUnknownLimit = value);
-                      _emit();
-                    },
-            ),
-            const Divider(),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Mostra solo velox ignorati'),
-              subtitle: const Text('Tocca un velox ignorato per ripristinarlo'),
-              value: _showIgnoredOnly,
-              onChanged: (value) {
-                setState(() => _showIgnoredOnly = value);
-                _emit();
-              },
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: isActive ? _clear : null,
-                    child: const Text('Cancella filtro'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Fatto'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

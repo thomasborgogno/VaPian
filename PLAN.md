@@ -51,6 +51,9 @@ lib/
   features/
     auth/                         # LoginScreen (Google / ospite)
     map/                          # Home Page: mappa, marker colorati, FAB inserimento, viewport provider
+                                   #   map_screen.dart possiede solo l'orchestrazione (stato, GoogleMap,
+                                   #   listener provider); modelli (camera_draft, camera_filter) e ogni
+                                   #   bottom sheet/banner vivono in file dedicati nella stessa cartella
     settings/                     # slider distanza, toggle tolleranza, sync OSM (Fase 2-3)
     osm_auth/                     # login OAuth OSM (Fase 3)
     conflict_resolution/          # pannello dedup OSM vs user, Haversine ≤ 25m (Fase 3-4)

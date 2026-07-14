@@ -20,6 +20,10 @@ L'applicazione fa del crowdsourcing e della filosofia open-source i suoi pilastr
   * **Inserimento:** Tramite pressione prolungata sulla mappa o pulsante "+" galleggiante (Floating Action Button), l'utente può posizionare il marker sulla mappa, impostarne la direzione sulla mappa, inserire il limite di velocità (selezionabile da preset standard es. 50, 70, 90, 110, 130).
   * **Eliminazione:** Un utente può selezionare un marker inserito da lui e rimuoverlo. L'eliminazione ha effetto immediato sul database locale e cloud.
 * **Gestione Blacklist ("Ignora Velox di OSM"):** Se un autovelox importato da OpenStreetMap non è più presente nella realtà, l'utente può cliccare sul marker e selezionare "Ignora". Questo contrassegna l'elemento come nascosto esclusivamente per il profilo dell'utente, rimuovendolo dalla visualizzazione e disattivando gli avvisi acustici.
+* **Filtro Mappa:** Un pulsante nella barra superiore, accanto all'icona del profilo, apre un pannello di filtro per i marker visualizzati:
+  * *Per limite di velocità:* selezione multipla tra i preset standard; un'opzione dedicata (disattiva di default) permette di includere anche gli autovelox di cui non è noto il limite.
+  * *Solo velox ignorati:* quando attiva, sostituisce il filtro per limite mostrando esclusivamente gli elementi della blacklist personale (in grigio); toccarne uno apre il bottom sheet di dettaglio da cui è possibile ripristinarlo (rimuoverlo dalla blacklist).
+  * L'icona del pulsante segnala visivamente se un filtro è attivo; dal pannello è sempre disponibile un'azione "Cancella filtro" per tornare alla visualizzazione senza restrizioni.
 * **Banner di Conferma Android Auto:** All'avvio dell'app sullo smartphone, un banner persistente in alto segnala se sono presenti elementi registrati rapidamente durante la guida tramite Android Auto. Il banner funge da scorciatoia per validare la posizione e raffinare i dati (es. correzione del limite stimato) per promuovere lo stato da `pending` a `approved`.
 
 ### 2.2 Impostazioni dell'Applicazione
