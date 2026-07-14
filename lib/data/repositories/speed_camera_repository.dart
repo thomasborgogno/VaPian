@@ -72,6 +72,19 @@ class SpeedCameraRepository {
     });
   }
 
+  /// All pending `source:'user'` cameras created by [uid] — shown in the
+  /// review banner and sheet so the user can promote them to `approved`.
+  /// Requires a composite index: createdBy + status + source (Firestore will
+  /// prompt to create it on first real-device run if missing).
+  Stream<List<SpeedCamera>> watchPendingOwn(String uid) {
+    return _collection
+        .where('createdBy', isEqualTo: uid)
+        .where('status', isEqualTo: SpeedCameraStatus.pending.name)
+        .where('source', isEqualTo: SpeedCameraSource.user.name)
+        .snapshots()
+        .map((s) => s.docs.map(SpeedCamera.fromFirestore).toList());
+  }
+
   /// Inserts or refreshes an OSM-sourced camera, keyed by its OSM node id
   /// (`camera.id`) so re-syncing the same node updates it in place instead
   /// of duplicating it (features.md 5.2, step 1). `createdAt` is left

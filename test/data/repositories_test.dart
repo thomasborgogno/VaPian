@@ -93,6 +93,50 @@ void main() {
       expect(doc.data()!['status'], 'approved');
     });
 
+    test('watchPendingOwn returns only pending user cameras for the given uid', () async {
+      await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9028,
+          lng: 12.4964,
+          limit: 50,
+          status: SpeedCameraStatus.pending,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+          createdBy: 'uid1',
+        ),
+      );
+      await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9028,
+          lng: 12.4964,
+          limit: 90,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+          createdBy: 'uid1',
+        ),
+      );
+      await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9028,
+          lng: 12.4964,
+          limit: 70,
+          status: SpeedCameraStatus.pending,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+          createdBy: 'uid2',
+        ),
+      );
+
+      final cameras = await repository.watchPendingOwn('uid1').first;
+
+      expect(cameras, hasLength(1));
+      expect(cameras.first.limit, 50);
+    });
+
     test('upsertOsmCamera re-syncing the same node updates it in place', () async {
       const first = SpeedCamera(
         id: 'osm_123',
