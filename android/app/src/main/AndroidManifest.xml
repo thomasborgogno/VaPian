@@ -3,6 +3,12 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- Android 13+: without this, CameraProximityService's ongoing notification
+         silently fails to show (the foreground service itself keeps running).
+         TODO(Fase 7): request it at runtime from the phone app on first launch. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- Declares this a car app; required=false so the phone-only install still works. -->
     <uses-feature android:name="android.hardware.type.automotive" android:required="false"/>
@@ -65,6 +71,13 @@
                 <category android:name="androidx.car.app.category.NAVIGATION"/>
             </intent-filter>
         </service>
+
+        <!-- Fase 6: continuous GPS+heading tracking, proximity/tolerance
+             filtering, TTS + audio-ducking alerts. Started by DrivingScreen. -->
+        <service
+            android:name="com.bortho.autovelox.carapp.CameraProximityService"
+            android:exported="false"
+            android:foregroundServiceType="location"/>
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

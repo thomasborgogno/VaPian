@@ -36,6 +36,13 @@ service cloud.firestore {
       match /ignored_cameras/{cameraId} {
         allow read, write: if isOwner(uid);
       }
+
+      // Written natively from Android Auto ("Ignora" quick action,
+      // features.md 3.3.1) — same owner as the parent user doc, confirmed
+      // or dismissed later from the phone's pending review sheet.
+      match /queued_ignores/{cameraId} {
+        allow read, write: if isOwner(uid);
+      }
     }
 
     // MVP: any signed-in user can trigger/record an OSM Overpass sync.

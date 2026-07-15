@@ -14,6 +14,7 @@ class PendingReviewSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cameras = ref.watch(pendingOwnCamerasProvider).value ?? [];
+    final queuedIgnores = ref.watch(queuedIgnoresProvider).value ?? [];
     final uid = ref.watch(authStateProvider).value?.uid;
 
     return DraggableScrollableSheet(
@@ -26,63 +27,97 @@ class PendingReviewSheet extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: cameras.isEmpty
+              child: cameras.isEmpty && queuedIgnores.isEmpty
                   ? Text(
-                      'Tutte le segnalazioni revisionate.',
+                      'Tutti gli elementi revisionati.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     )
                   : Text(
-                      'Segnalazioni in attesa (${cameras.length})',
+                      'In attesa di revisione (${cameras.length + queuedIgnores.length})',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
             ),
             Expanded(
-              child: cameras.isEmpty
-                  ? const SizedBox.shrink()
-                  : ListView.builder(
-                      controller: scrollController,
-                      itemCount: cameras.length,
-                      itemBuilder: (_, i) {
-                        final camera = cameras[i];
-                        return ListTile(
-                          leading: const Icon(Icons.speed),
-                          title: Text(
-                            camera.limit != null ? '${camera.limit} km/h' : 'Limite sconosciuto',
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  for (final camera in cameras)
+                    ListTile(
+                      leading: const Icon(Icons.speed),
+                      title: Text(
+                        camera.limit != null ? '${camera.limit} km/h' : 'Limite sconosciuto',
+                      ),
+                      subtitle: Text(
+                        '${camera.lat.toStringAsFixed(5)}, ${camera.lng.toStringAsFixed(5)}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.check_circle_outline),
+                            tooltip: 'Approva',
+                            onPressed: uid == null
+                                ? null
+                                : () => ref
+                                    .read(speedCameraRepositoryProvider)
+                                    .updateStatus(camera.id, SpeedCameraStatus.approved),
                           ),
-                          subtitle: Text(
-                            '${camera.lat.toStringAsFixed(5)}, ${camera.lng.toStringAsFixed(5)}',
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Modifica sulla mappa',
+                            onPressed: () => onEdit(camera),
                           ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.check_circle_outline),
-                                tooltip: 'Approva',
-                                onPressed: uid == null
-                                    ? null
-                                    : () => ref
-                                        .read(speedCameraRepositoryProvider)
-                                        .updateStatus(camera.id, SpeedCameraStatus.approved),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined),
-                                tooltip: 'Modifica sulla mappa',
-                                onPressed: () => onEdit(camera),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip: 'Elimina',
-                                onPressed: uid == null
-                                    ? null
-                                    : () => ref
-                                        .read(speedCameraRepositoryProvider)
-                                        .deleteCamera(camera.id),
-                              ),
-                            ],
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: 'Elimina',
+                            onPressed: uid == null
+                                ? null
+                                : () => ref
+                                    .read(speedCameraRepositoryProvider)
+                                    .deleteCamera(camera.id),
                           ),
-                        );
-                      },
+                        ],
+                      ),
                     ),
+                  if (queuedIgnores.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                      child: Text(
+                        'Segnalati come rimossi in auto (${queuedIgnores.length})',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                  for (final queued in queuedIgnores)
+                    ListTile(
+                      leading: const Icon(Icons.visibility_off_outlined),
+                      title: Text('Autovelox ${queued.cameraId}'),
+                      subtitle: const Text('Ignorato dal conducente durante la guida'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.check_circle_outline),
+                            tooltip: 'Conferma: aggiungi alla blacklist',
+                            onPressed: uid == null
+                                ? null
+                                : () => ref
+                                    .read(blacklistRepositoryProvider)
+                                    .confirmQueuedIgnore(uid, queued.cameraId),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: 'Ignora la richiesta',
+                            onPressed: uid == null
+                                ? null
+                                : () => ref
+                                    .read(blacklistRepositoryProvider)
+                                    .dismissQueuedIgnore(uid, queued.cameraId),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(16),

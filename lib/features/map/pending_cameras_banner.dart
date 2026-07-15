@@ -23,8 +23,8 @@ class PendingCamerasBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   count == 1
-                      ? 'Hai 1 segnalazione in attesa di revisione.'
-                      : 'Hai $count segnalazioni in attesa di revisione.',
+                      ? 'Hai 1 elemento in attesa di revisione.'
+                      : 'Hai $count elementi in attesa di revisione.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),

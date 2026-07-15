@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "105468480792-26uaulrnjuqi9d7a3bfb4as96fr41v37.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bortho.autovelox",
+            "certificate_hash": "c6c3ac1842053f98bab7d70f9e33dd7114539cdd"
+          }
+        },
+        {
           "client_id": "105468480792-9dq1mgak99uts0t1od6dvocfut15lm38.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

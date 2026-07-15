@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
@@ -111,6 +112,16 @@ class MainCarScreen(carContext: CarContext) : Screen(carContext), DefaultLifecyc
             .setSingleList(listBuilder.build())
             .setTitle("Autovelox vicini")
             .setHeaderAction(Action.APP_ICON)
+            .setActionStrip(
+                ActionStrip.Builder()
+                    .addAction(
+                        Action.Builder()
+                            .setTitle("Avvia guida")
+                            .setOnClickListener { screenManager.push(DrivingScreen(carContext)) }
+                            .build(),
+                    )
+                    .build(),
+            )
             .build()
     }
 

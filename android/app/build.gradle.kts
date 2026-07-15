@@ -63,11 +63,15 @@ dependencies {
     // Flutter and this side only share Firestore collections, never a Method Channel.
     implementation("androidx.car.app:app:1.4.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.core:core-ktx:1.13.1")
 
     // Firestore Android SDK — independent from cloud_firestore (Dart), same
     // collections/offline cache, used by CameraRepository et al.
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-firestore")
+    // Same signed-in user (Google/anonymous) as the phone app — Firebase Auth
+    // persists its session on-device, shared by both SDKs in this app install.
+    implementation("com.google.firebase:firebase-auth")
 
     // GPS/heading for the proximity loop (Fase 6) and the Fase 5 nearby-cameras screen.
     implementation("com.google.android.gms:play-services-location:21.3.0")

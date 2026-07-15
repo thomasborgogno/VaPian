@@ -66,14 +66,16 @@ carapp/                          # Fase 5-6
   AutoveloxApplication.kt        # Application custom: FirebaseApp.initializeApp() eager (serve anche se Android Auto avvia il processo senza MainActivity)
   AutoveloxCarAppService.kt      # CarAppService, dichiarato in AndroidManifest con intent-filter androidx.car.app.CarAppService
   AutoveloxSession.kt            # Session -> onCreateScreen
-  screens/MainCarScreen.kt       # NavigationTemplate/GridTemplate + ActionStrip coi due pulsanti grandi
+  screens/MainCarScreen.kt       # Lista autovelox vicini (Fase 5) + azione "Avvia guida" -> DrivingScreen
+  screens/DrivingScreen.kt       # PaneTemplate con la card di allarme e i due pulsanti grandi (Fase 6)
   CameraProximityService.kt      # Foreground Service (type="location"): loop GPS, query geohash Firestore, ProximityCalculator, ToleranceFilter, TTS, audio focus
   data/CameraRepository.kt       # wrapper nativo su FirebaseFirestore (stesse collezioni del lato Dart)
   data/SettingsRepository.kt
   data/BlacklistRepository.kt
   util/GeoHashUtil.kt            # stesso algoritmo geohash di core/utils/geo.dart — porting 1:1, documentato
   util/ProximityCalculator.kt    # distanza + bearing match col senso di marcia
-  util/ToleranceFilter.kt        # state machine isteresi (soglia 10% + override in accelerazione)
+  util/ToleranceFilter.kt        # filtro tolleranza (soglia 10% + override in accelerazione, ricalcolato a ogni tick GPS)
+  util/AlertDistanceCalculator.kt # distanza di preavviso fissa/dinamica + stima limite a cascata per "Segnala Velox"
 res/xml/automotive_app_desc.xml  # dichiarazione app Android Auto (categoria, min car api level) — Fase 5
 ```
 
@@ -89,6 +91,7 @@ res/xml/automotive_app_desc.xml  # dichiarazione app Android Auto (categoria, mi
 - `settings`: `alertDistanceMode` (`fixed`|`dynamic`), `alertDistanceMeters` (100–1000), `toleranceFilterEnabled` (bool, default true).
 - `osmLinked: bool`, `lastOsmSyncAt: Timestamp` (per lo Smart Reminder dei 7 giorni).
 - Sottocollezione **`ignored_cameras/{cameraId}`** — sostituisce la "tabella locale" della spec: blacklist per-utente su Firestore, con cache offline automatica su entrambi i lati.
+- Sottocollezione **`queued_ignores/{cameraId}`** (Fase 6) — scritta nativamente dal pulsante "Ignora Velox" in auto (`queuedAt`); il telefono la mostra nella `PendingReviewSheet` esistente (Fase 4) e la promuove a `ignored_cameras` (conferma) o la scarta, così un tap accidentale in guida resta reversibile.
 
 **`sync_metadata/global`** — `lastSyncAt`, `camerasSynced`: marcatore globale per lo Smart Reminder OSM.
 
@@ -106,7 +109,7 @@ res/xml/automotive_app_desc.xml  # dichiarazione app Android Auto (categoria, mi
 | **3 — Integrazione OSM (telefono)** | Sync manuale Overpass → Firestore, Smart Reminder 7gg, login OAuth2 OSM, pubblicazione changeset | ✅ Completata |
 | **4 — Blacklist & revisione** | Sottocollezione `ignored_cameras`, banner di conferma su avvio app per elementi `pending` catturati da Android Auto, promozione a `approved` | ✅ Completata |
 | **5 — Fondamenta Android Auto** | `AutoveloxCarAppService`/`Session`/`Screen` scheletro, `automotive_app_desc.xml`, manifest, prima schermata lista camere vicine, test su Desktop Head Unit (DHU) | 🔶 Codice completato, DHU da verificare |
-| **6 — Logica di guida nativa** | `CameraProximityService`: GPS+heading, query geohash, `ProximityCalculator`, `ToleranceFilter`, card di allarme, TTS + audio focus via `CarContext`, i due pulsanti azione (Ignora/Segnala) → scritture Firestore | ⬜ |
+| **6 — Logica di guida nativa** | `CameraProximityService`: GPS+heading, query geohash, `ProximityCalculator`, `ToleranceFilter`, card di allarme (`DrivingScreen`), TTS + audio focus, i due pulsanti azione (Ignora/Segnala) → scritture Firestore | 🔶 Codice completato, DHU/dispositivo reale da verificare |
 | **7 — Hardening** | Audit security rules, eventuale Cloud Function per l'ingestione OSM, permessi location in background (dialog Android 12+), test batteria, revisione linee guida Google per app di guida/distrazione, test su head unit reale | ⬜ |
 | **8 — Rilascio** | Crashlytics/Analytics (opzionali), icone, privacy policy (obbligatoria: posizione + dati crowdsourced), listing Play Store | ⬜ |
 
@@ -123,3 +126,4 @@ Alcuni file sono intenzionalmente **non versionati** (contengono percorsi o chia
 - Dopo ogni fase: `flutter analyze` pulito + `flutter test` (repository/modelli testati con `fake_cloud_firestore`, nessun emulatore reale necessario).
 - Dopo la Fase 1: `flutter build apk --debug` per confermare che Gradle/manifest compilino.
 - Dopo la Fase 5–6: test con Android Auto Desktop Head Unit (DHU) per verificare rendering schermate, pulsanti azione, TTS e ducking audio.
+- Nota: il codice Kotlin di `carapp/` non ha ancora una suite di test JVM/Robolectric (`flutter test` copre solo `lib/`); `ProximityCalculator`, `ToleranceFilter` e `AlertDistanceCalculator` sono funzioni pure senza dipendenze Android, quindi facilmente testabili — da aggiungere in Fase 7 insieme all'hardening.

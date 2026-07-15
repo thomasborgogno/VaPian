@@ -73,10 +73,19 @@ object GeoHashUtil {
         return 1
     }
 
-    /** Single-cell prefix range for a Firestore `geohash` field query (same approximation as the Dart side). */
-    fun queryBoundsPrefix(latitude: Double, longitude: Double, radiusMeters: Double): String {
+    data class QueryBounds(val start: String, val end: String)
+
+    /**
+     * Single-cell prefix range for a Firestore `geohash` field query — same
+     * approximation as `geohashQueryBounds` in `lib/core/utils/geo.dart`.
+     * `end` appends `` (above every valid base32 char) so the range
+     * matches every full-precision hash that starts with this prefix, not
+     * just an exact (never-stored) truncated value.
+     */
+    fun queryBounds(latitude: Double, longitude: Double, radiusMeters: Double): QueryBounds {
         val precision = precisionForRadiusMeters(radiusMeters)
-        return encode(latitude, longitude, precision)
+        val hash = encode(latitude, longitude, precision)
+        return QueryBounds(hash, "$hash")
     }
 
     fun haversineDistanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'models/queued_ignore.dart';
 import 'models/speed_camera.dart';
 import 'models/sync_metadata.dart';
 import 'models/user_settings.dart';
@@ -60,4 +61,13 @@ final pendingOwnCamerasProvider = StreamProvider<List<SpeedCamera>>((ref) {
   final uid = ref.watch(authStateProvider).value?.uid;
   if (uid == null) return Stream.value(const []);
   return ref.watch(speedCameraRepositoryProvider).watchPendingOwn(uid);
+});
+
+/// Cameras tapped "Ignora" from Android Auto, awaiting phone-side
+/// confirmation before becoming a permanent blacklist entry (features.md
+/// 3.3.1). Returns an empty list when not signed in.
+final queuedIgnoresProvider = StreamProvider<List<QueuedIgnore>>((ref) {
+  final uid = ref.watch(authStateProvider).value?.uid;
+  if (uid == null) return Stream.value(const []);
+  return ref.watch(blacklistRepositoryProvider).watchQueuedIgnores(uid);
 });

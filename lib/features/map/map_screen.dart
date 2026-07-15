@@ -488,7 +488,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final syncMetadata = ref.watch(syncMetadataProvider).value;
     final showSyncReminder =
         !_syncReminderDismissed && draft == null && (syncMetadata?.isStale() ?? false);
-    final pendingCount = ref.watch(pendingOwnCamerasProvider).value?.length ?? 0;
+    final pendingCount = (ref.watch(pendingOwnCamerasProvider).value?.length ?? 0) +
+        (ref.watch(queuedIgnoresProvider).value?.length ?? 0);
     final showPendingBanner = draft == null && pendingCount > 0;
 
     return Scaffold(
