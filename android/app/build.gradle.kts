@@ -59,7 +59,19 @@ flutter {
 
 dependencies {
     // Android Auto / Automotive OS screens, built with the native Car App Library.
-    // Templates, Screen/Session lifecycle etc. are implemented in Kotlin and
-    // bridged to Dart via Method Channels.
+    // All real-time driving logic (GPS, Firestore, TTS) lives here in Kotlin;
+    // Flutter and this side only share Firestore collections, never a Method Channel.
     implementation("androidx.car.app:app:1.4.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+
+    // Firestore Android SDK — independent from cloud_firestore (Dart), same
+    // collections/offline cache, used by CameraRepository et al.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-firestore")
+
+    // GPS/heading for the proximity loop (Fase 6) and the Fase 5 nearby-cameras screen.
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 }

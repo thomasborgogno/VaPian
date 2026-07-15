@@ -4,13 +4,22 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
 
+    <!-- Declares this a car app; required=false so the phone-only install still works. -->
+    <uses-feature android:name="android.hardware.type.automotive" android:required="false"/>
+
     <application
         android:label="autovelox_app"
-        android:name="${applicationName}"
+        android:name="com.bortho.autovelox.carapp.AutoveloxApplication"
         android:icon="@mipmap/ic_launcher">
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -46,6 +55,17 @@
                 <data android:scheme="com.bortho.autovelox"/>
             </intent-filter>
         </activity>
+        <!-- Android Auto entry point: real-time driving logic (Fase 5-6) lives
+             entirely in Kotlin, sharing Firestore collections with the phone app. -->
+        <service
+            android:name="com.bortho.autovelox.carapp.AutoveloxCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService"/>
+                <category android:name="androidx.car.app.category.NAVIGATION"/>
+            </intent-filter>
+        </service>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
