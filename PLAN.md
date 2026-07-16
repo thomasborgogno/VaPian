@@ -1,4 +1,4 @@
-# Architettura e Strategia di Sviluppo — Autovelox App
+# Architettura e Strategia di Sviluppo VaPian! — Autovelox App
 
 > Versione condivisa nel repo (portabile tra macchine). Per la specifica funzionale originale vedi [`features.md`](features.md); per il contesto rapido su ogni nuova sessione/macchina vedi [`CLAUDE.md`](CLAUDE.md).
 

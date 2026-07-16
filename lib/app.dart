@@ -13,7 +13,7 @@ class App extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
 
     return MaterialApp(
-      title: 'Autovelox App',
+      title: 'VaPian!',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange)),
       home: authState.when(
         data: (user) => user == null ? const LoginScreen() : const MapScreen(),

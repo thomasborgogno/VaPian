@@ -14,9 +14,9 @@
     <uses-feature android:name="android.hardware.type.automotive" android:required="false"/>
 
     <application
-        android:label="autovelox_app"
+        android:label="VaPian!"
         android:name="com.bortho.autovelox.carapp.AutoveloxApplication"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />

@@ -14,9 +14,11 @@ class OsmEditException implements Exception {
 }
 
 /// Builds the OSM changeset XML payload (features.md 4 tag list).
-String buildChangesetXml({String comment = 'Aggiunta autovelox segnalato dagli utenti'}) {
+String buildChangesetXml({
+  String comment = 'Aggiunta autovelox segnalato dagli utenti',
+}) {
   return '<osm><changeset>'
-      '<tag k="created_by" v="Autovelox App"/>'
+      '<tag k="created_by" v="VaPian! - Autovelox App"/>'
       '<tag k="comment" v="$comment"/>'
       '</changeset></osm>';
 }
@@ -26,8 +28,10 @@ String buildChangesetXml({String comment = 'Aggiunta autovelox segnalato dagli u
 /// rather than sending a made-up value.
 String buildNodeXml(int changesetId, SpeedCamera camera) {
   final tags = StringBuffer()..write('<tag k="highway" v="speed_camera"/>');
-  if (camera.limit != null) tags.write('<tag k="maxspeed" v="${camera.limit}"/>');
-  if (camera.direction != null) tags.write('<tag k="direction" v="${camera.direction}"/>');
+  if (camera.limit != null)
+    tags.write('<tag k="maxspeed" v="${camera.limit}"/>');
+  if (camera.direction != null)
+    tags.write('<tag k="direction" v="${camera.direction}"/>');
 
   return '<osm><node changeset="$changesetId" lat="${camera.lat}" lon="${camera.lng}">'
       '$tags'
@@ -39,8 +43,8 @@ String buildNodeXml(int changesetId, SpeedCamera camera) {
 /// token from [OsmAuthService].
 class OsmEditService {
   OsmEditService({http.Client? client, OsmAuthService? authService})
-      : _client = client ?? http.Client(),
-        _authService = authService ?? OsmAuthService();
+    : _client = client ?? http.Client(),
+      _authService = authService ?? OsmAuthService();
 
   final http.Client _client;
   final OsmAuthService _authService;
@@ -50,7 +54,10 @@ class OsmEditService {
     if (token == null) {
       throw OsmEditException('Accedi con OpenStreetMap prima di pubblicare.');
     }
-    final headers = {'Authorization': 'Bearer $token', 'Content-Type': 'text/xml'};
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'text/xml',
+    };
 
     final changesetId = await _createChangeset(headers);
     try {
@@ -70,7 +77,9 @@ class OsmEditService {
       body: buildChangesetXml(),
     );
     if (response.statusCode != 200) {
-      throw OsmEditException('Creazione changeset OSM non riuscita (${response.statusCode}).');
+      throw OsmEditException(
+        'Creazione changeset OSM non riuscita (${response.statusCode}).',
+      );
     }
     return int.parse(response.body.trim());
   }
@@ -86,7 +95,9 @@ class OsmEditService {
       body: buildNodeXml(changesetId, camera),
     );
     if (response.statusCode != 200) {
-      throw OsmEditException('Creazione nodo OSM non riuscita (${response.statusCode}).');
+      throw OsmEditException(
+        'Creazione nodo OSM non riuscita (${response.statusCode}).',
+      );
     }
     return int.parse(response.body.trim());
   }

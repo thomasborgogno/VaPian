@@ -1,4 +1,4 @@
-# Autovelox App
+# VaPian! - Autovelox App
 
 App Flutter (Android) per la segnalazione crowdsourced di autovelox, con estensione Android Auto nativa (Kotlin, `androidx.car.app`).
 

@@ -42,7 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 const Icon(Icons.speed, size: 96),
                 const SizedBox(height: 16),
-                Text('Autovelox App', style: Theme.of(context).textTheme.headlineMedium),
+                Text('VaPian!', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 32),
                 if (_isLoading)
                   const CircularProgressIndicator()

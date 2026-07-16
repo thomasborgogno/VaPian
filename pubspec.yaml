@@ -45,6 +45,7 @@ dependencies:
   flutter_web_auth_2: ^5.0.3
   crypto: ^3.0.7
   flutter_secure_storage: ^10.3.1
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:

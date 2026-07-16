@@ -96,7 +96,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     setState(() => _markers = markers.toSet());
   }
 
-  Future<Marker> _buildMarkerForCamera(SpeedCamera camera, {bool grayedOut = false}) async {
+  Future<Marker> _buildMarkerForCamera(
+    SpeedCamera camera, {
+    bool grayedOut = false,
+  }) async {
     final color = grayedOut ? speedCameraGray : markerColorFor(camera);
     if (_showDots) {
       return Marker(
@@ -108,7 +111,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Marker(
       markerId: MarkerId(camera.id),
       position: LatLng(camera.lat, camera.lng),
-      icon: await SpeedCameraMarkerIcons.forColor(color, hasDirection: camera.direction != null),
+      icon: await SpeedCameraMarkerIcons.forColor(
+        color,
+        hasDirection: camera.direction != null,
+      ),
       anchor: SpeedCameraMarkerIcons.anchor,
       rotation: camera.direction?.toDouble() ?? 0,
       onTap: () => _onMarkerTap(camera),
@@ -148,8 +154,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final controller = _controller;
     if (controller == null) return;
     final bounds = await controller.getVisibleRegion();
-    final centerLat = (bounds.northeast.latitude + bounds.southwest.latitude) / 2;
-    final centerLng = (bounds.northeast.longitude + bounds.southwest.longitude) / 2;
+    final centerLat =
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2;
+    final centerLng =
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2;
     final radiusMeters = haversineDistanceMeters(
       centerLat,
       centerLng,
@@ -164,15 +172,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final last = _lastQueriedViewport;
     if (last != null) {
       final movedMeters = haversineDistanceMeters(
-        last.latitude, last.longitude, centerLat, centerLng,
+        last.latitude,
+        last.longitude,
+        centerLat,
+        centerLng,
       );
       // Prefetched radius = last.radiusMeters * 3; visible radius = radiusMeters.
       // Remaining buffer = prefetched – moved – visible.  Re-query when < 0.
-      final remainingBuffer = last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
+      final remainingBuffer =
+          last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
       if (remainingBuffer >= radiusMeters) return;
     }
 
-    final newViewport = MapViewport(latitude: centerLat, longitude: centerLng, radiusMeters: radiusMeters);
+    final newViewport = MapViewport(
+      latitude: centerLat,
+      longitude: centerLng,
+      radiusMeters: radiusMeters,
+    );
     _lastQueriedViewport = newViewport;
     ref.read(mapViewportProvider.notifier).update(newViewport);
   }
@@ -200,15 +216,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final controller = _controller;
     final draft = _draft;
     if (controller == null || draft == null) return;
-    final screenCoordinate = await controller.getScreenCoordinate(draft.position);
+    final screenCoordinate = await controller.getScreenCoordinate(
+      draft.position,
+    );
     if (!mounted || _draft == null) return;
     final ratio = MediaQuery.of(context).devicePixelRatio;
     setState(() {
-      _draftScreenPosition = Offset(screenCoordinate.x / ratio, screenCoordinate.y / ratio);
+      _draftScreenPosition = Offset(
+        screenCoordinate.x / ratio,
+        screenCoordinate.y / ratio,
+      );
     });
   }
 
-  Future<void> _startDraft({required LatLng position, SpeedCamera? existing}) async {
+  Future<void> _startDraft({
+    required LatLng position,
+    SpeedCamera? existing,
+  }) async {
     if (_draft != null) return;
     final controller = _controller;
     if (controller == null) return;
@@ -217,7 +241,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         existing != null &&
         existing.source == SpeedCameraSource.user &&
         existing.status == SpeedCameraStatus.pending;
-    final osmLinked = isPendingUserReport ? await OsmAuthService().isLinked() : false;
+    final osmLinked = isPendingUserReport
+        ? await OsmAuthService().isLinked()
+        : false;
 
     final screenCoordinate = await controller.getScreenCoordinate(position);
     if (!mounted) return;
@@ -233,7 +259,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         existingStatus: existing?.status,
         canPublishToOsm: isPendingUserReport && osmLinked,
       );
-      _draftScreenPosition = Offset(screenCoordinate.x / ratio, screenCoordinate.y / ratio);
+      _draftScreenPosition = Offset(
+        screenCoordinate.x / ratio,
+        screenCoordinate.y / ratio,
+      );
     });
     _rebuildMarkers();
 
@@ -272,7 +301,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (draft == null || uid == null) return null;
 
     final repository = ref.read(speedCameraRepositoryProvider);
-    final geohash = encodeGeohash(draft.position.latitude, draft.position.longitude, precision: 9);
+    final geohash = encodeGeohash(
+      draft.position.latitude,
+      draft.position.longitude,
+      precision: 9,
+    );
     final direction = draft.direction.round();
 
     if (draft.isNew) {
@@ -309,7 +342,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _approveDraft(int limit) async {
     final id = await _persistDraft(limit);
     if (id == null) return;
-    await ref.read(speedCameraRepositoryProvider).updateStatus(id, SpeedCameraStatus.approved);
+    await ref
+        .read(speedCameraRepositoryProvider)
+        .updateStatus(id, SpeedCameraStatus.approved);
     _closeDraft();
   }
 
@@ -333,12 +368,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         geohash: '',
       );
       await OsmEditService().publishCamera(camera);
-      await ref.read(speedCameraRepositoryProvider).updateStatus(id, SpeedCameraStatus.approved);
+      await ref
+          .read(speedCameraRepositoryProvider)
+          .updateStatus(id, SpeedCameraStatus.approved);
       _closeDraft();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Pubblicazione OSM non riuscita: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Pubblicazione OSM non riuscita: $e')),
+        );
       }
     }
   }
@@ -353,13 +391,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// Converts a screen-space drag delta into a lat/lng delta using the
   /// current zoom's Web Mercator ground resolution — synchronous, so
   /// dragging never waits on the platform view.
-  ({double dLat, double dLng}) _screenDeltaToLatLngDelta(Offset delta, double atLatitude) {
+  ({double dLat, double dLng}) _screenDeltaToLatLngDelta(
+    Offset delta,
+    double atLatitude,
+  ) {
     final metersPerPixel =
-        _groundResolutionAtZoom0 * cos(atLatitude * pi / 180) / pow(2, _currentZoom);
+        _groundResolutionAtZoom0 *
+        cos(atLatitude * pi / 180) /
+        pow(2, _currentZoom);
     final groundDx = delta.dx * metersPerPixel;
     final groundDy = delta.dy * metersPerPixel;
     final dLat = -groundDy / _metersPerDegreeLatitude;
-    final dLng = groundDx / (_metersPerDegreeLatitude * cos(atLatitude * pi / 180));
+    final dLng =
+        groundDx / (_metersPerDegreeLatitude * cos(atLatitude * pi / 180));
     return (dLat: dLat, dLng: dLng);
   }
 
@@ -367,7 +411,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final draft = _draft;
     final screenPosition = _draftScreenPosition;
     if (draft == null || screenPosition == null) return;
-    final delta = _screenDeltaToLatLngDelta(details.delta, draft.position.latitude);
+    final delta = _screenDeltaToLatLngDelta(
+      details.delta,
+      draft.position.latitude,
+    );
     setState(() {
       _draftScreenPosition = screenPosition + details.delta;
       _draft = draft.copyWith(
@@ -385,7 +432,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final thetaRad = draft.direction * pi / 180;
     // Tangential component of the drag, perpendicular to the current
     // handle direction, turned into an angle change around the marker.
-    final tangential = details.delta.dx * cos(thetaRad) + details.delta.dy * sin(thetaRad);
+    final tangential =
+        details.delta.dx * cos(thetaRad) + details.delta.dy * sin(thetaRad);
     final deltaAngleDeg = tangential / DraftOverlay.handleDistancePx * 180 / pi;
     final newDirection = ((draft.direction + deltaAngleDeg) % 360 + 360) % 360;
     setState(() => _draft = draft.copyWith(direction: newDirection));
@@ -418,7 +466,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (isIgnored) {
         unignoreCallback = () {
           Navigator.of(context).pop();
-          ref.read(blacklistRepositoryProvider).unignoreCamera(safeUid, camera.id);
+          ref
+              .read(blacklistRepositoryProvider)
+              .unignoreCamera(safeUid, camera.id);
         };
       }
     }
@@ -467,7 +517,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       builder: (context) => PendingReviewSheet(
         onEdit: (camera) {
           Navigator.of(context).pop();
-          _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+          _startDraft(
+            position: LatLng(camera.lat, camera.lng),
+            existing: camera,
+          );
         },
       ),
     );
@@ -487,15 +540,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final draft = _draft;
     final syncMetadata = ref.watch(syncMetadataProvider).value;
     final showSyncReminder =
-        !_syncReminderDismissed && draft == null && (syncMetadata?.isStale() ?? false);
-    final pendingCount = (ref.watch(pendingOwnCamerasProvider).value?.length ?? 0) +
+        !_syncReminderDismissed &&
+        draft == null &&
+        (syncMetadata?.isStale() ?? false);
+    final pendingCount =
+        (ref.watch(pendingOwnCamerasProvider).value?.length ?? 0) +
         (ref.watch(queuedIgnoresProvider).value?.length ?? 0);
     final showPendingBanner = draft == null && pendingCount > 0;
 
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        title: const Text('Autovelox App'),
+        title: const Text('VaPian! - Maps'),
         actions: [
           IconButton(
             icon: _filter.isActive
@@ -516,7 +572,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       body: Stack(
         children: [
           GoogleMap(
-            initialCameraPosition: CameraPosition(target: _initialPosition, zoom: _currentZoom),
+            initialCameraPosition: CameraPosition(
+              target: _initialPosition,
+              zoom: _currentZoom,
+            ),
             markers: markers,
             mapType: MapStyleConfig.mapType,
             style: MapStyleConfig.styleJson,
@@ -561,10 +620,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       onSync: () {
                         setState(() => _syncReminderDismissed = true);
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
                         );
                       },
-                      onDismiss: () => setState(() => _syncReminderDismissed = true),
+                      onDismiss: () =>
+                          setState(() => _syncReminderDismissed = true),
                     ),
                   if (showPendingBanner)
                     PendingCamerasBanner(
