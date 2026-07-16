@@ -13,6 +13,9 @@ class OsmConfig {
   static const String redirectScheme = 'com.bortho.autovelox';
   static const String redirectUri = '$redirectScheme://oauth2redirect';
 
-  /// `write_api` is required to create changesets/nodes.
-  static const List<String> scopes = ['write_api'];
+  /// `write_api` is required to create changesets/nodes; `read_prefs` lets
+  /// us read the signed-in username for the changeset `created_by` tag
+  /// (osm_edit_service.dart). Accounts linked before this scope was added
+  /// need to re-link to pick it up.
+  static const List<String> scopes = ['write_api', 'read_prefs'];
 }

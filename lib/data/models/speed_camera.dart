@@ -29,6 +29,8 @@ class SpeedCamera {
     this.createdBy,
     this.createdAt,
     this.updatedAt,
+    this.osmNodeId,
+    this.osmNodeVersion,
   });
 
   factory SpeedCamera.fromMap(String id, Map<String, dynamic> map) {
@@ -44,6 +46,8 @@ class SpeedCamera {
       createdBy: map['createdBy'] as String?,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
+      osmNodeId: map['osmNodeId'] as int?,
+      osmNodeVersion: map['osmNodeVersion'] as int?,
     );
   }
 
@@ -63,6 +67,12 @@ class SpeedCamera {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  /// Non-null once this user report has been published as a real node on
+  /// production OpenStreetMap (features.md 4) — `osmNodeVersion` is the
+  /// node's current version, needed to delete it later.
+  final int? osmNodeId;
+  final int? osmNodeVersion;
+
   Map<String, dynamic> toMap() {
     return {
       'lat': lat,
@@ -75,6 +85,8 @@ class SpeedCamera {
       if (createdBy != null) 'createdBy': createdBy,
       if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
       if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
+      if (osmNodeId != null) 'osmNodeId': osmNodeId,
+      if (osmNodeVersion != null) 'osmNodeVersion': osmNodeVersion,
     };
   }
 
@@ -89,6 +101,8 @@ class SpeedCamera {
     String? createdBy,
     DateTime? createdAt,
     DateTime? updatedAt,
+    int? osmNodeId,
+    int? osmNodeVersion,
   }) {
     return SpeedCamera(
       id: id,
@@ -102,6 +116,8 @@ class SpeedCamera {
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      osmNodeId: osmNodeId ?? this.osmNodeId,
+      osmNodeVersion: osmNodeVersion ?? this.osmNodeVersion,
     );
   }
 }

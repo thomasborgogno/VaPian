@@ -72,7 +72,15 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
               ? Text(widget.user!.email!)
               : null,
           trailing: OutlinedButton.icon(
-            onPressed: () => ref.read(authServiceProvider).signOut(),
+            onPressed: () async {
+              await ref.read(authServiceProvider).signOut();
+              // SettingsScreen is pushed on top of MapScreen: App's `home`
+              // already swaps to LoginScreen once authStateProvider emits
+              // null, but the pushed routes stay on top until popped.
+              if (context.mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            },
             icon: const Icon(Icons.logout),
             label: const Text('Esci'),
           ),

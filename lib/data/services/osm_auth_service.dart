@@ -46,6 +46,21 @@ class OsmAuthService {
 
   Future<String?> readAccessToken() => _storage.read(key: _tokenKey);
 
+  /// The signed-in OpenStreetMap username (`read_prefs` scope) — used as the
+  /// changeset `created_by` tag (osm_edit_service.dart) instead of the app
+  /// name. Returns null if signed out or the lookup fails.
+  Future<String?> fetchUsername() async {
+    final token = await readAccessToken();
+    if (token == null) return null;
+    final response = await _client.get(
+      Uri.parse('${OsmConfig.apiBaseUrl}/api/0.6/user/details.json'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) return null;
+    final user = jsonDecode(response.body)['user'] as Map<String, dynamic>?;
+    return user?['display_name'] as String?;
+  }
+
   Future<void> signIn() async {
     final codeVerifier = generateCodeVerifier();
     final codeChallenge = codeChallengeFor(codeVerifier);

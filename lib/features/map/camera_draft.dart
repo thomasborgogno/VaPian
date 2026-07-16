@@ -13,6 +13,8 @@ class CameraDraft {
     this.existingId,
     this.existingSource,
     this.existingStatus,
+    this.existingOsmNodeId,
+    this.existingOsmNodeVersion,
     this.canPublishToOsm = false,
   });
 
@@ -23,7 +25,12 @@ class CameraDraft {
   final SpeedCameraSource? existingSource;
   final SpeedCameraStatus? existingStatus;
 
-  /// True only when editing an existing `source: 'user'`, `status: 'pending'`
+  /// Non-null when this report was already published as a real node on
+  /// OpenStreetMap — [existingOsmNodeVersion] is needed to delete it later.
+  final int? existingOsmNodeId;
+  final int? existingOsmNodeVersion;
+
+  /// True only when editing an existing `source: 'user'`
   /// report and the user has an OpenStreetMap account linked
   /// (features.md 4) — computed once when the draft starts.
   final bool canPublishToOsm;
@@ -38,6 +45,8 @@ class CameraDraft {
       existingId: existingId,
       existingSource: existingSource,
       existingStatus: existingStatus,
+      existingOsmNodeId: existingOsmNodeId,
+      existingOsmNodeVersion: existingOsmNodeVersion,
       canPublishToOsm: canPublishToOsm,
     );
   }

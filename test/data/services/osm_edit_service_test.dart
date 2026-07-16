@@ -6,19 +6,24 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 class _FakeOsmAuthService extends OsmAuthService {
-  _FakeOsmAuthService(this._token);
+  _FakeOsmAuthService(this._token, {String? username = 'testuser'})
+      : _username = username;
 
   final String? _token;
+  final String? _username;
 
   @override
   Future<String?> readAccessToken() async => _token;
+
+  @override
+  Future<String?> fetchUsername() async => _username;
 }
 
 void main() {
   group('buildChangesetXml', () {
     test('includes the created_by and comment tags', () {
-      final xml = buildChangesetXml(comment: 'test comment');
-      expect(xml, contains('k="created_by"'));
+      final xml = buildChangesetXml(createdBy: 'testuser', comment: 'test comment');
+      expect(xml, contains('k="created_by" v="testuser"'));
       expect(xml, contains('k="comment" v="test comment"'));
     });
   });

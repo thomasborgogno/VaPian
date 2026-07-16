@@ -52,6 +52,18 @@ class SpeedCameraRepository {
     });
   }
 
+  /// Records that this report was just published as a real node on
+  /// production OpenStreetMap (features.md 4) — also promotes it to
+  /// `approved`, since a published report has by definition been reviewed.
+  Future<void> markPublishedToOsm(String id, int nodeId, {int version = 1}) {
+    return _collection.doc(id).update({
+      'osmNodeId': nodeId,
+      'osmNodeVersion': version,
+      'status': SpeedCameraStatus.approved.name,
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
+
   /// Corrects an existing report's position/limit/direction (e.g. after
   /// dragging the marker or its direction handle on the map).
   Future<void> updateCamera(

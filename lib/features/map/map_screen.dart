@@ -239,11 +239,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final controller = _controller;
     if (controller == null) return;
 
-    final isPendingUserReport =
+    final isUserReportNotPending =
         existing != null &&
         existing.source == SpeedCameraSource.user &&
-        existing.status == SpeedCameraStatus.pending;
-    final osmLinked = isPendingUserReport
+        existing.status != SpeedCameraStatus.pending;
+    final osmLinked = isUserReportNotPending
         ? await OsmAuthService().isLinked()
         : false;
 
@@ -259,7 +259,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         existingId: existing?.id,
         existingSource: existing?.source,
         existingStatus: existing?.status,
-        canPublishToOsm: isPendingUserReport && osmLinked,
+        existingOsmNodeId: existing?.osmNodeId,
+        existingOsmNodeVersion: existing?.osmNodeVersion,
+        canPublishToOsm:
+            isUserReportNotPending && osmLinked && existing.osmNodeId == null,
       );
       _draftScreenPosition = Offset(
         screenCoordinate.x / ratio,
@@ -318,7 +321,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           lng: draft.position.longitude,
           limit: limit,
           direction: direction,
-          status: SpeedCameraStatus.pending,
+          status: SpeedCameraStatus.approved,
           source: SpeedCameraSource.user,
           geohash: geohash,
           createdBy: uid,
@@ -350,12 +353,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _closeDraft();
   }
 
-  /// features.md 4: promotes a pending user report to `approved` by first
-  /// saving it, then publishing it as a new node on production OpenStreetMap
-  /// via a changeset.
+  /// features.md 4: after an explicit confirmation (publishing writes real,
+  /// public data), promotes a user report to `approved` by first saving it,
+  /// then publishing it as a new node on production OpenStreetMap via a
+  /// changeset.
   Future<void> _publishToOsm(int limit) async {
     final draft = _draft;
     if (draft == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pubblica su OpenStreetMap'),
+        content: const Text(
+          'Stai per pubblicare questo autovelox su OpenStreetMap, una mappa '
+          'pubblica consultata da migliaia di persone. Prima di procedere, '
+          'assicurati che la posizione e la direzione indicate sulla mappa '
+          'siano corrette e verificate: una volta pubblicato, il punto sarà '
+          'visibile a tutti gli utenti di OpenStreetMap.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Pubblica'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     try {
       final id = await _persistDraft(limit);
       if (id == null) return;
@@ -369,11 +399,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         source: SpeedCameraSource.user,
         geohash: '',
       );
-      await OsmEditService().publishCamera(camera);
+      final nodeId = await OsmEditService().publishCamera(camera);
       await ref
           .read(speedCameraRepositoryProvider)
-          .updateStatus(id, SpeedCameraStatus.approved);
+          .markPublishedToOsm(id, nodeId);
       _closeDraft();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Autovelox pubblicato su OpenStreetMap.'),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -386,6 +423,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _deleteDraft() async {
     final id = _draft?.existingId;
     if (id == null) return;
+
+    final osmNodeId = _draft?.existingOsmNodeId;
+    if (osmNodeId != null) {
+      try {
+        await OsmEditService().deleteNode(
+          osmNodeId,
+          lat: _draft!.position.latitude,
+          lng: _draft!.position.longitude,
+          version: _draft?.existingOsmNodeVersion ?? 1,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Eliminazione da OpenStreetMap non riuscita: $e'),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     await ref.read(speedCameraRepositoryProvider).deleteCamera(id);
     _closeDraft();
   }

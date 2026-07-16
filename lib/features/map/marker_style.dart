@@ -17,7 +17,9 @@ const Color speedCameraGray = Color(0xFF9E9E9E);
 
 Color markerColorFor(SpeedCamera camera) {
   if (camera.source == SpeedCameraSource.openstreetmap) {
-    return speedCameraGreen;
+    return speedCameraBlue;
   }
-  return camera.status == SpeedCameraStatus.approved ? speedCameraBlue : speedCameraOrange;
+  return camera.status == SpeedCameraStatus.approved
+      ? speedCameraGreen
+      : speedCameraOrange;
 }
