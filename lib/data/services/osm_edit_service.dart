@@ -31,10 +31,12 @@ String buildChangesetXml({
 /// rather than sending a made-up value.
 String buildNodeXml(int changesetId, SpeedCamera camera) {
   final tags = StringBuffer()..write('<tag k="highway" v="speed_camera"/>');
-  if (camera.limit != null)
+  if (camera.limit != null) {
     tags.write('<tag k="maxspeed" v="${camera.limit}"/>');
-  if (camera.direction != null)
+  }
+  if (camera.direction != null) {
     tags.write('<tag k="direction" v="${camera.direction}"/>');
+  }
 
   return '<osm><node changeset="$changesetId" lat="${camera.lat}" lon="${camera.lng}">'
       '$tags'

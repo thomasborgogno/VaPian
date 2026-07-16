@@ -490,7 +490,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _onHandlePanUpdate(DragUpdateDetails details) {
     final draft = _draft;
     if (draft == null) return;
-    final thetaRad = draft.direction * pi / 180;
+    // The handle sits opposite the travel direction (see DraftOverlay), so
+    // its screen angle is offset by 180° from draft.direction.
+    final thetaRad = draft.direction * pi / 180 + pi;
     // Tangential component of the drag, perpendicular to the current
     // handle direction, turned into an angle change around the marker.
     final tangential =

@@ -4,48 +4,55 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// Shared drawing for the speed-camera glyph: a colored circle with a
-/// camera icon and, when a direction is known, a triangular pointer above
-/// it. Used both to bake a (north-facing) [BitmapDescriptor] for saved
-/// cameras — rotated cheaply via `Marker.rotation`, no need to regenerate a
-/// bitmap per direction — and, as a live [CustomPainter], for the
-/// draggable draft overlay where the rotation changes continuously while
-/// the user adjusts the handle.
+/// Shared drawing for the speed-camera glyph: a colored circle and, when a
+/// direction is known, a translucent radar cone behind it. Used both to
+/// bake a (north-facing) [BitmapDescriptor] for saved cameras — rotated
+/// cheaply via `Marker.rotation`, no need to regenerate a bitmap per
+/// direction — and, as a live [CustomPainter], for the draggable draft
+/// overlay where the rotation changes continuously while the user adjusts
+/// the handle.
 ///
-/// The camera icon glyph is drawn 90° clockwise from the pointer, then
-/// flipped another 180° — so its "lens" faces opposite the pointer/handle:
-/// the arrow shows the direction of travel being watched, while the lens
-/// faces back toward the incoming car. With no known direction there's no
-/// pointer to be relative to, so the icon is drawn upright instead.
+/// The radar cone faces due south (i.e. directly opposite the direction of
+/// travel), so it fans out towards the oncoming vehicle the camera is
+/// watching for. With no known direction there's no travel bearing to be
+/// relative to, so no cone is drawn.
 class SpeedCameraMarkerIcons {
   SpeedCameraMarkerIcons._();
 
-  static const double circleRadius = 17;
-  static const double pointerHeight = 12;
-  static const double pointerHalfWidth = 6;
+  static const double circleRadius = 9;
+  static const double radarRadius = 40;
+  static const double radarSweepDegrees = 30;
   static const double _renderScale = 3;
 
-  static const double width = circleRadius * 2;
-  static const double height = pointerHeight + circleRadius * 2;
+  static final double _radarHalfSweepRad = radarSweepDegrees / 2 * pi / 180;
+  static final double _radarLateralExtent =
+      radarRadius * sin(_radarHalfSweepRad);
+  static final double _halfWidth = max(circleRadius, _radarLateralExtent);
+
+  static final double width = _halfWidth * 2;
+  static final double height = circleRadius + radarRadius;
 
   /// The circle's center — not the bitmap's geometric center, since the
-  /// pointer triangle sits above it — expressed as a fraction of [height]
+  /// radar cone extends south of it — expressed as a fraction of [height]
   /// for `Marker.anchor` / positioning the live overlay widget.
-  static const Offset anchor = Offset(0.5, (pointerHeight + circleRadius) / height);
+  static final Offset anchor = Offset(0.5, circleRadius / height);
 
   static final Map<(Color, bool), BitmapDescriptor> _cameraCache = {};
 
-  static Future<BitmapDescriptor> forColor(Color color, {bool hasDirection = true}) async {
+  static Future<BitmapDescriptor> forColor(
+    Color color, {
+    bool hasDirection = true,
+  }) async {
     final key = (color, hasDirection);
-    return _cameraCache[key] ??= await _renderCamera(color, hasDirection: hasDirection);
+    return _cameraCache[key] ??= await _renderCamera(
+      color,
+      hasDirection: hasDirection,
+    );
   }
 
   /// Draws the glyph centered at [center] on an already-scaled [canvas].
-  /// [rotationDegrees] rotates the whole glyph (pointer + circle + icon)
-  /// around [center]; the icon additionally always faces 90° further
-  /// clockwise than the pointer, then 180° opposite it — the lens ends up
-  /// facing back the way the pointer/handle indicate. When [hasDirection]
-  /// is false, no pointer is drawn and the icon stays upright.
+  /// [rotationDegrees] rotates the whole glyph (radar cone + circle) around
+  /// [center]. When [hasDirection] is false, no cone is drawn.
   static void paintGlyph(
     Canvas canvas,
     Offset center,
@@ -59,12 +66,21 @@ class SpeedCameraMarkerIcons {
     canvas.translate(-center.dx, -center.dy);
 
     if (hasDirection) {
-      final pointerPath = Path()
-        ..moveTo(center.dx, center.dy - circleRadius - pointerHeight)
-        ..lineTo(center.dx - pointerHalfWidth, center.dy - circleRadius)
-        ..lineTo(center.dx + pointerHalfWidth, center.dy - circleRadius)
+      // Cone bisector at 90° (canvas angles grow clockwise from the positive
+      // x-axis) points due south — opposite the direction of travel, i.e.
+      // towards the oncoming vehicle.
+      final startAngle = pi / 2 - _radarHalfSweepRad;
+      final sweepAngle = _radarHalfSweepRad * 2;
+      final radarPath = Path()
+        ..moveTo(center.dx, center.dy)
+        ..arcTo(
+          Rect.fromCircle(center: center, radius: radarRadius),
+          startAngle,
+          sweepAngle,
+          false,
+        )
         ..close();
-      canvas.drawPath(pointerPath, Paint()..color = color);
+      canvas.drawPath(radarPath, Paint()..color = color.withAlpha(90));
     }
 
     canvas.drawCircle(center, circleRadius, Paint()..color = color);
@@ -74,44 +90,28 @@ class SpeedCameraMarkerIcons {
       Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = circleRadius * 0.09,
+        ..strokeWidth = circleRadius * 0.16,
     );
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    if (hasDirection) {
-      // -90° to match the pointer, +180° so the lens faces the oncoming car.
-      canvas.rotate(pi / 2);
-    }
-    canvas.translate(-center.dx, -center.dy);
-    final textPainter = TextPainter(textDirection: TextDirection.ltr)
-      ..text = TextSpan(
-        text: String.fromCharCode(Icons.videocam.codePoint),
-        style: TextStyle(
-          fontSize: circleRadius * 1.15,
-          fontFamily: Icons.videocam.fontFamily,
-          package: Icons.videocam.fontPackage,
-          color: Colors.white,
-        ),
-      )
-      ..layout();
-    textPainter.paint(
-      canvas,
-      center - Offset(textPainter.width / 2, textPainter.height / 2),
-    );
-    canvas.restore();
 
     canvas.restore();
   }
 
-  static Future<BitmapDescriptor> _renderCamera(Color color, {required bool hasDirection}) async {
+  static Future<BitmapDescriptor> _renderCamera(
+    Color color, {
+    required bool hasDirection,
+  }) async {
     final rawWidth = width * _renderScale;
     final rawHeight = height * _renderScale;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, rawWidth, rawHeight))
       ..scale(_renderScale);
 
-    paintGlyph(canvas, Offset(width / 2, anchor.dy * height), color, hasDirection: hasDirection);
+    paintGlyph(
+      canvas,
+      Offset(width / 2, anchor.dy * height),
+      color,
+      hasDirection: hasDirection,
+    );
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(rawWidth.round(), rawHeight.round());

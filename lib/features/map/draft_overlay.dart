@@ -29,48 +29,60 @@ class DraftOverlay extends StatelessWidget {
   /// direction handle — independent of zoom, so it always reads clearly.
   /// Also used by `MapScreen` to turn a handle drag into an angle change.
   static const double handleDistancePx = 70;
-  static const double handleDotRadius = 14;
+  static const double handleDotInnerRadius = 14;
+  static const double handleDotOuterRadius = 24;
 
   @override
   Widget build(BuildContext context) {
-    final theta = draft.direction * pi / 180;
+    // Opposite the direction of travel, so the handle sits on the same side
+    // as the radar cone (see SpeedCameraMarkerIcons).
+    final theta = draft.direction * pi / 180 + pi;
     final handlePosition =
-        markerPosition + Offset(handleDistancePx * sin(theta), -handleDistancePx * cos(theta));
+        markerPosition +
+        Offset(handleDistancePx * sin(theta), -handleDistancePx * cos(theta));
 
     return Stack(
       children: [
         Positioned(
           left: markerPosition.dx - SpeedCameraMarkerIcons.width / 2,
-          top: markerPosition.dy - SpeedCameraMarkerIcons.anchor.dy * SpeedCameraMarkerIcons.height,
+          top:
+              markerPosition.dy -
+              SpeedCameraMarkerIcons.anchor.dy * SpeedCameraMarkerIcons.height,
           child: GestureDetector(
             onPanUpdate: onMarkerPanUpdate,
             child: SizedBox(
               width: SpeedCameraMarkerIcons.width,
               height: SpeedCameraMarkerIcons.height,
               child: CustomPaint(
-                painter: DraftMarkerPainter(color: speedCameraOrange, rotationDegrees: draft.direction),
+                painter: DraftMarkerPainter(
+                  color: speedCameraOrange,
+                  rotationDegrees: draft.direction,
+                ),
               ),
             ),
           ),
         ),
         Positioned(
-          left: handlePosition.dx - handleDotRadius,
-          top: handlePosition.dy - handleDotRadius,
+          left: handlePosition.dx - handleDotInnerRadius,
+          top: handlePosition.dy - handleDotInnerRadius,
           child: GestureDetector(
             onPanUpdate: onHandlePanUpdate,
             child: Container(
-              width: handleDotRadius * 2,
-              height: handleDotRadius * 2,
+              width: handleDotOuterRadius,
+              height: handleDotOuterRadius,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white,
-                border: Border.all(color: Colors.deepPurple, width: 3),
+                border: Border.all(color: Colors.deepPurple, width: 2),
               ),
               child: Center(
                 child: Container(
-                  width: handleDotRadius,
-                  height: handleDotRadius,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple),
+                  width: handleDotInnerRadius,
+                  height: handleDotInnerRadius,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.deepPurple,
+                  ),
                 ),
               ),
             ),
