@@ -22,7 +22,9 @@ import kotlin.math.roundToInt
  * Live driving screen (Fase 6): alert card for the nearest relevant camera
  * plus the two quick-action buttons, driven entirely by
  * [CameraProximityService]'s state — this screen never touches GPS/Firestore
- * itself.
+ * itself. The service's lifecycle is owned by [com.bortho.autovelox.carapp.AutoveloxSession]
+ * (it runs for the whole Android Auto session, not just while this screen is
+ * on top), so this screen only observes.
  */
 class DrivingScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
     init {
@@ -30,14 +32,9 @@ class DrivingScreen(carContext: CarContext) : Screen(carContext), DefaultLifecyc
     }
 
     override fun onCreate(owner: LifecycleOwner) {
-        CameraProximityService.start(carContext)
         lifecycleScope.launch {
             CameraProximityService.state.collect { invalidate() }
         }
-    }
-
-    override fun onDestroy(owner: LifecycleOwner) {
-        CameraProximityService.stop(carContext)
     }
 
     override fun onGetTemplate(): Template {

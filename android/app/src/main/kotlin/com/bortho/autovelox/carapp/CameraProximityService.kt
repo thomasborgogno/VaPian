@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -14,7 +15,9 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
+import androidx.car.app.notification.CarAppExtender
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.bortho.autovelox.carapp.data.BlacklistRepository
 import com.bortho.autovelox.carapp.data.CameraRepository
 import com.bortho.autovelox.carapp.data.SettingsRepository
@@ -80,6 +83,9 @@ class CameraProximityService : Service() {
     /** Cameras ignored just for this drive, pending phone confirmation (see [BlacklistRepository.queueIgnore]). */
     private val sessionIgnoredIds = mutableSetOf<String>()
 
+    /** Camera the current alert notification (if any) refers to — avoids re-posting on every location tick. */
+    private var notifiedCameraId: String? = null
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let(::onLocation)
@@ -120,6 +126,7 @@ class CameraProximityService : Service() {
         if (ttsReady) tts.shutdown()
         serviceScope.cancel()
         _state.value = DrivingAlertState()
+        cancelAlertNotification()
     }
 
     @SuppressLint("MissingPermission")
@@ -151,6 +158,7 @@ class CameraProximityService : Service() {
 
         if (candidate == null) {
             _state.value = DrivingAlertState(speedKmh = speedKmh)
+            cancelAlertNotification()
             return
         }
 
@@ -168,7 +176,11 @@ class CameraProximityService : Service() {
 
         if (!withinRange) {
             announcedCameraIds.remove(candidate.id)
+            cancelAlertNotification()
             return
+        }
+        if (notifiedCameraId != candidate.id) {
+            postAlertNotification(candidate, distance)
         }
         val shouldSpeak = ToleranceFilter.shouldPlayAudio(speedKmh, candidate.limit, settings.toleranceFilterEnabled)
         if (shouldSpeak && announcedCameraIds.add(candidate.id)) {
@@ -207,7 +219,7 @@ class CameraProximityService : Service() {
             "${distanceMeters.roundToInt()} metri"
         }
         val limitText = camera.limit?.let { " Limite $it chilometri orari." } ?: ""
-        tts.speak("Attenzione, autovelox a $distanceText.$limitText", TextToSpeech.QUEUE_FLUSH, null, camera.id)
+        tts.speak("Ocio! autovelox a $distanceText.$limitText", TextToSpeech.QUEUE_FLUSH, null, camera.id)
     }
 
     @Suppress("DEPRECATION")
@@ -256,15 +268,82 @@ class CameraProximityService : Service() {
             .build()
     }
 
+    /**
+     * Car-app notification (features.md 3.3): fired as soon as a camera enters
+     * alert range, visible as a heads-up banner over whatever app is currently
+     * on top of the car screen (not just when [screens.DrivingScreen] is open).
+     */
+    private fun postAlertNotification(camera: SpeedCamera, distanceMeters: Double) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "Avviso autovelox in avvicinamento",
+                NotificationManager.IMPORTANCE_HIGH,
+            )
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+        }
+
+        notifiedCameraId = camera.id
+        val title = "Autovelox tra ${formatDistance(distanceMeters)}"
+        val text = camera.limit?.let { "Limite $it km/h" } ?: "Limite sconosciuto"
+
+        val builder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setAutoCancel(true)
+
+        val carExtenderBuilder = CarAppExtender.Builder()
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setImportance(NotificationManagerCompat.IMPORTANCE_HIGH)
+
+        if (camera.source == "openstreetmap") {
+            val ignoreIntent = PendingIntent.getBroadcast(
+                this,
+                IGNORE_REQUEST_CODE,
+                Intent(this, NotificationActionReceiver::class.java)
+                    .setAction(NotificationActionReceiver.ACTION_IGNORE_CAMERA)
+                    .putExtra(NotificationActionReceiver.EXTRA_CAMERA_ID, camera.id),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Ignora", ignoreIntent)
+            carExtenderBuilder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Ignora", ignoreIntent)
+        }
+
+        builder.extend(carExtenderBuilder.build())
+        NotificationManagerCompat.from(this).notify(ALERT_NOTIFICATION_ID, builder.build())
+    }
+
+    private fun cancelAlertNotification() {
+        if (notifiedCameraId == null) return
+        notifiedCameraId = null
+        NotificationManagerCompat.from(this).cancel(ALERT_NOTIFICATION_ID)
+    }
+
+    private fun formatDistance(meters: Double): String {
+        return if (meters >= 1000) "${(meters / 1000).roundToInt()} km" else "${meters.roundToInt()} m"
+    }
+
+    /** Shared by the "Ignora Velox" button (guida in primo piano) and the notification action. */
+    private fun ignoreCamera(uid: String, camera: SpeedCamera) {
+        sessionIgnoredIds.add(camera.id)
+        announcedCameraIds.remove(camera.id)
+        if (_state.value.camera?.id == camera.id) {
+            _state.value = _state.value.copy(camera = null, distanceMeters = null)
+        }
+        cancelAlertNotification()
+        serviceScope.launch { runCatching { blacklistRepository.queueIgnore(uid, camera.id) } }
+    }
+
     /** "Ignora Velox" (features.md 3.3.1) — OSM-sourced cameras only. */
     fun ignoreActiveCamera() {
         val camera = _state.value.camera ?: return
         if (camera.source != "openstreetmap") return
-        sessionIgnoredIds.add(camera.id)
-        announcedCameraIds.remove(camera.id)
-        _state.value = _state.value.copy(camera = null, distanceMeters = null)
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        serviceScope.launch { runCatching { blacklistRepository.queueIgnore(uid, camera.id) } }
+        ignoreCamera(uid, camera)
     }
 
     /** "Segnala Velox" (features.md 3.3.2) — quick crowdsourced report at the current position. */
@@ -290,6 +369,9 @@ class CameraProximityService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1
         private const val NOTIFICATION_CHANNEL_ID = "camera_proximity"
+        private const val ALERT_NOTIFICATION_ID = 2
+        private const val ALERT_CHANNEL_ID = "camera_alerts"
+        private const val IGNORE_REQUEST_CODE = 100
         private const val LOCATION_INTERVAL_MS = 2000L
         private const val REQUERY_THRESHOLD_METERS = 500.0
         private const val SEARCH_RADIUS_METERS = 3000.0
@@ -304,6 +386,25 @@ class CameraProximityService : Service() {
 
         fun reportCameraNowFromUi() {
             instance?.reportCameraNow()
+        }
+
+        /**
+         * "Ignora" tapped from the car-app notification: delegates to the live
+         * service when possible (keeps its in-memory session-ignore/TTS state
+         * consistent), otherwise still queues the ignore directly so the tap
+         * isn't lost if the service already stopped.
+         */
+        fun ignoreCameraIdFromNotification(context: Context, cameraId: String) {
+            val running = instance
+            if (running != null && state.value.camera?.id == cameraId) {
+                running.ignoreActiveCamera()
+                return
+            }
+            NotificationManagerCompat.from(context).cancel(ALERT_NOTIFICATION_ID)
+            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+            CoroutineScope(SupervisorJob()).launch {
+                runCatching { BlacklistRepository().queueIgnore(uid, cameraId) }
+            }
         }
 
         fun start(context: Context) {
