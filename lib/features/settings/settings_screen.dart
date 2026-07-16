@@ -19,7 +19,8 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Impostazioni')),
       body: settingsAsync.when(
-        data: (settings) => _SettingsBody(initialSettings: settings, user: user),
+        data: (settings) =>
+            _SettingsBody(initialSettings: settings, user: user),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Errore: $error')),
       ),
@@ -54,18 +55,22 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
 
   @override
   Widget build(BuildContext context) {
-    final isDynamic = _settings.alertDistanceMode == AlertDistanceMode.dynamicDistance;
+    final isDynamic =
+        _settings.alertDistanceMode == AlertDistanceMode.dynamicDistance;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: UserAvatar(user: widget.user, radius: 24),
           title: Text(
-            widget.user?.displayName ?? (widget.user?.isAnonymous ?? true ? 'Ospite' : 'Utente'),
+            widget.user?.displayName ??
+                (widget.user?.isAnonymous ?? true ? 'Ospite' : 'Utente'),
           ),
-          subtitle: widget.user?.email != null ? Text(widget.user!.email!) : null,
+          subtitle: widget.user?.email != null
+              ? Text(widget.user!.email!)
+              : null,
           trailing: OutlinedButton.icon(
             onPressed: () => ref.read(authServiceProvider).signOut(),
             icon: const Icon(Icons.logout),
@@ -73,16 +78,23 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
           ),
         ),
         const Divider(height: 32),
-        Text('Distanza di preavviso', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Distanza di preavviso',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         SegmentedButton<AlertDistanceMode>(
           segments: const [
             ButtonSegment(value: AlertDistanceMode.fixed, label: Text('Fissa')),
-            ButtonSegment(value: AlertDistanceMode.dynamicDistance, label: Text('Dinamica')),
+            ButtonSegment(
+              value: AlertDistanceMode.dynamicDistance,
+              label: Text('Dinamica'),
+            ),
           ],
           selected: {_settings.alertDistanceMode},
-          onSelectionChanged: (selection) =>
-              _applyChange((s) => s.copyWith(alertDistanceMode: selection.first)),
+          onSelectionChanged: (selection) => _applyChange(
+            (s) => s.copyWith(alertDistanceMode: selection.first),
+          ),
         ),
         const SizedBox(height: 16),
         if (isDynamic)
@@ -102,8 +114,9 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
             max: 1000,
             divisions: 18,
             label: '${_settings.alertDistanceMeters} m',
-            onChanged: (value) =>
-                _applyChange((s) => s.copyWith(alertDistanceMeters: value.round())),
+            onChanged: (value) => _applyChange(
+              (s) => s.copyWith(alertDistanceMeters: value.round()),
+            ),
           ),
         ],
         const Divider(height: 32),
@@ -114,12 +127,14 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
             'Nessun avviso sonoro se la velocità è inferiore di almeno il 10% al limite.',
           ),
           value: _settings.toleranceFilterEnabled,
-          onChanged: (value) => _applyChange((s) => s.copyWith(toleranceFilterEnabled: value)),
+          onChanged: (value) =>
+              _applyChange((s) => s.copyWith(toleranceFilterEnabled: value)),
         ),
         const Divider(height: 32),
         OsmSyncSection(
           selectedRegions: _settings.osmSyncRegions,
-          onRegionsChanged: (regions) => _applyChange((s) => s.copyWith(osmSyncRegions: regions)),
+          onRegionsChanged: (regions) =>
+              _applyChange((s) => s.copyWith(osmSyncRegions: regions)),
         ),
         const Divider(height: 32),
         const OsmAuthSection(),

@@ -8,6 +8,7 @@ import 'package:location/location.dart' as loc;
 import '../../core/utils/geo.dart';
 import '../../core/widgets/user_avatar.dart';
 import '../../data/models/speed_camera.dart';
+import '../../data/models/user_settings.dart';
 import '../../data/providers.dart';
 import '../../data/services/osm_auth_service.dart';
 import '../../data/services/osm_edit_service.dart';
@@ -20,6 +21,7 @@ import 'draft_overlay.dart';
 import 'draft_sheet.dart';
 import 'filter_sheet.dart';
 import 'map_style_config.dart';
+import 'map_style_toggle.dart';
 import 'map_viewport.dart';
 import 'marker_style.dart';
 import 'pending_cameras_banner.dart';
@@ -577,7 +579,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               zoom: _currentZoom,
             ),
             markers: markers,
-            mapType: MapStyleConfig.mapType,
+            mapType: MapStyleConfig.mapTypeFor(
+              ref.watch(userSettingsProvider).value?.mapStyle ??
+                  MapStyle.normal,
+            ),
             style: MapStyleConfig.styleJson,
             zoomControlsEnabled: MapStyleConfig.zoomControlsEnabled,
             zoomGesturesEnabled: MapStyleConfig.zoomGesturesEnabled,
@@ -607,6 +612,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               onMarkerPanUpdate: _onMarkerPanUpdate,
               onHandlePanUpdate: _onHandlePanUpdate,
             ),
+          Positioned(
+            right: 60,
+            top: 12,
+            child: SafeArea(child: MapStyleToggle()),
+          ),
           if (showSyncReminder || showPendingBanner)
             Positioned(
               top: 0,
