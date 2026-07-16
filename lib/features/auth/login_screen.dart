@@ -34,13 +34,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: const Alignment(0, -0.4),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.speed, size: 96),
+                Image.asset('assets/icon/foreground.png', width: 200, height: 200),
                 const SizedBox(height: 16),
                 Text('VaPian!', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 32),

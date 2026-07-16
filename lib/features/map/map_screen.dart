@@ -612,7 +612,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        title: const Text('VaPian! - Maps'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/icon/foreground.png', width: 32, height: 32),
+            const SizedBox(width: 8),
+            const Text('VaPian! - Maps'),
+          ],
+        ),
         actions: [
           IconButton(
             icon: _filter.isActive
@@ -643,6 +650,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   MapStyle.normal,
             ),
             style: MapStyleConfig.styleJson,
+            // Sposta i controlli nativi (bottone "la mia posizione", zoom)
+            // sopra il FloatingActionButton "+", che altrimenti li
+            // sovrappone essendo entrambi ancorati in basso a destra.
+            padding: const EdgeInsets.only(bottom: 88),
             zoomControlsEnabled: MapStyleConfig.zoomControlsEnabled,
             zoomGesturesEnabled: MapStyleConfig.zoomGesturesEnabled,
             compassEnabled: MapStyleConfig.compassEnabled,
