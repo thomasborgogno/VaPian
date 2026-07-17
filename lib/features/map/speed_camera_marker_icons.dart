@@ -5,37 +5,42 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Shared drawing for the speed-camera glyph: a colored circle and, when a
-/// direction is known, a translucent radar cone behind it. Used both to
-/// bake a (north-facing) [BitmapDescriptor] for saved cameras — rotated
-/// cheaply via `Marker.rotation`, no need to regenerate a bitmap per
-/// direction — and, as a live [CustomPainter], for the draggable draft
-/// overlay where the rotation changes continuously while the user adjusts
-/// the handle.
+/// direction is known, an arrow from its center pointing towards the
+/// direction of travel the camera monitors. Used both to bake a
+/// (north-facing) [BitmapDescriptor] for saved cameras — rotated cheaply via
+/// `Marker.rotation`, no need to regenerate a bitmap per direction — and, as
+/// a live [CustomPainter], for the draggable draft overlay where the
+/// rotation changes continuously while the user adjusts the handle.
 ///
-/// The radar cone faces due south (i.e. directly opposite the direction of
-/// travel), so it fans out towards the oncoming vehicle the camera is
-/// watching for. With no known direction there's no travel bearing to be
-/// relative to, so no cone is drawn.
+/// Callers pass `rotationDegrees` = the monitored travel direction (see
+/// `SpeedCamera.monitoredTravelDirectionDeg`) — this glyph doesn't know
+/// about OSM's raw `direction` tag or the local `directionReversed` flag,
+/// it just draws whatever bearing it's given. With no known direction
+/// there's no bearing to draw, so no arrow is drawn.
 class SpeedCameraMarkerIcons {
   SpeedCameraMarkerIcons._();
 
   static const double circleRadius = 9;
-  static const double radarRadius = 40;
-  static const double radarSweepDegrees = 36;
+  static const double arrowLength =
+      34; // circle edge to shaft tip, excludes the arrowhead below.
+  static const double arrowHeadWidth = 11;
+  static const double arrowHeadLength = 11;
+  // The arrowhead's apex extends slightly past the shaft tip — reserved here
+  // so it isn't clipped by the canvas bounds.
+  static const double _arrowHeadApex = arrowHeadLength * 0.6;
   static const double _renderScale = 3;
 
-  static final double _radarHalfSweepRad = radarSweepDegrees / 2 * pi / 180;
-  static final double _radarLateralExtent =
-      radarRadius * sin(_radarHalfSweepRad);
-  static final double _halfWidth = max(circleRadius, _radarLateralExtent);
-
-  static final double width = _halfWidth * 2;
-  static final double height = circleRadius + radarRadius;
+  static const double width = circleRadius * 2;
+  static const double height = circleRadius + arrowLength + _arrowHeadApex;
 
   /// The circle's center — not the bitmap's geometric center, since the
-  /// radar cone extends south of it — expressed as a fraction of [height]
-  /// for `Marker.anchor` / positioning the live overlay widget.
-  static final Offset anchor = Offset(0.5, circleRadius / height);
+  /// arrow extends above it (towards the top of the unrotated glyph) —
+  /// expressed as a fraction of [height] for `Marker.anchor` / positioning
+  /// the live overlay widget.
+  static const Offset anchor = Offset(
+    0.5,
+    (arrowLength + _arrowHeadApex) / height,
+  );
 
   static final Map<(Color, bool), BitmapDescriptor> _cameraCache = {};
 
@@ -51,8 +56,10 @@ class SpeedCameraMarkerIcons {
   }
 
   /// Draws the glyph centered at [center] on an already-scaled [canvas].
-  /// [rotationDegrees] rotates the whole glyph (radar cone + circle) around
-  /// [center]. When [hasDirection] is false, no cone is drawn.
+  /// [rotationDegrees] rotates the whole glyph (arrow + circle) around
+  /// [center] — 0 draws the arrow pointing straight up, so passing a
+  /// compass bearing here points it at that bearing on a north-up map.
+  /// When [hasDirection] is false, no arrow is drawn.
   static void paintGlyph(
     Canvas canvas,
     Offset center,
@@ -66,21 +73,23 @@ class SpeedCameraMarkerIcons {
     canvas.translate(-center.dx, -center.dy);
 
     if (hasDirection) {
-      // Cone bisector at 90° (canvas angles grow clockwise from the positive
-      // x-axis) points due south — opposite the direction of travel, i.e.
-      // towards the oncoming vehicle.
-      final startAngle = pi / 2 - _radarHalfSweepRad;
-      final sweepAngle = _radarHalfSweepRad * 2;
-      final radarPath = Path()
-        ..moveTo(center.dx, center.dy)
-        ..arcTo(
-          Rect.fromCircle(center: center, radius: radarRadius),
-          startAngle,
-          sweepAngle,
-          false,
-        )
+      final tip = Offset(center.dx, center.dy - arrowLength);
+      final shaftStart = Offset(center.dx, center.dy - circleRadius);
+      canvas.drawLine(
+        shaftStart,
+        tip,
+        Paint()
+          ..color = color
+          ..strokeWidth = 4.5
+          ..strokeCap = StrokeCap.round,
+      );
+
+      final headPath = Path()
+        ..moveTo(tip.dx, tip.dy - arrowHeadLength * 0.6)
+        ..lineTo(tip.dx - arrowHeadWidth / 2, tip.dy + arrowHeadLength * 0.4)
+        ..lineTo(tip.dx + arrowHeadWidth / 2, tip.dy + arrowHeadLength * 0.4)
         ..close();
-      canvas.drawPath(radarPath, Paint()..color = color.withAlpha(90));
+      canvas.drawPath(headPath, Paint()..color = color);
     }
 
     canvas.drawCircle(center, circleRadius, Paint()..color = color);

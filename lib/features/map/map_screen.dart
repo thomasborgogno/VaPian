@@ -120,12 +120,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         hasDirection: camera.direction != null,
       ),
       anchor: SpeedCameraMarkerIcons.anchor,
-      rotation: camera.direction?.toDouble() ?? 0,
+      // The monitored travel direction, not the raw OSM-facing `direction`
+      // tag — they differ when `directionReversed` is set (features.md).
+      rotation: camera.monitoredTravelDirectionDeg?.toDouble() ?? 0,
       // Without `flat`, a Marker's rotation is a screen-space billboard
-      // rotation and ignores the map's own bearing — the radar cone would
-      // stay screen-up-fixed while the two-finger-rotated map turned under
-      // it. `flat` glues it to the ground plane so `rotation` behaves as
-      // the true-north compass bearing it's meant to be.
+      // rotation and ignores the map's own bearing — the arrow would stay
+      // screen-up-fixed while the two-finger-rotated map turned under it.
+      // `flat` glues it to the ground plane so `rotation` behaves as the
+      // true-north compass bearing it's meant to be.
       flat: true,
       onTap: () => _onMarkerTap(camera),
     );
@@ -254,6 +256,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final controller = _controller;
     if (controller == null) return;
 
+    final uid = ref.read(authStateProvider).value?.uid;
+    final isOwner = existing != null && uid != null && existing.createdBy == uid;
+
     final isUserReportNotPending =
         existing != null &&
         existing.source == SpeedCameraSource.user &&
@@ -264,6 +269,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final osmLinked = (isUserReportNotPending || osmEditNodeId != null)
         ? await OsmAuthService().isLinked()
         : false;
+    final canEditOsm = osmEditNodeId != null && osmLinked;
+    // Not owned by this user and not editable via OSM login: only the local
+    // "verso contrario" toggle (and, for OSM cameras, ignore/unignore) stay
+    // interactive — position/limit/save/delete/approve/publish are all
+    // disabled. Never true for a brand-new draft.
+    final readOnly = existing != null && !isOwner && !canEditOsm;
+
+    final ignoredIds = ref.read(ignoredCameraIdsProvider).value ?? const {};
+    final isIgnored = existing != null && ignoredIds.contains(existing.id);
+    VoidCallback? ignoreCallback;
+    VoidCallback? unignoreCallback;
+    if (isOsmSourced && uid != null) {
+      final cameraId = existing.id;
+      ignoreCallback = () {
+        ref.read(blacklistRepositoryProvider).ignoreCamera(uid, cameraId);
+        _closeDraft();
+      };
+      if (isIgnored) {
+        unignoreCallback = () {
+          ref.read(blacklistRepositoryProvider).unignoreCamera(uid, cameraId);
+          _closeDraft();
+        };
+      }
+    }
 
     final screenCoordinate = await controller.getScreenCoordinate(position);
     if (!mounted) return;
@@ -281,8 +310,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         existingOsmNodeVersion: existing?.osmNodeVersion,
         canPublishToOsm:
             isUserReportNotPending && osmLinked && existing.osmNodeId == null,
-        canEditOsm: osmEditNodeId != null && osmLinked,
+        canEditOsm: canEditOsm,
         osmEditNodeId: osmEditNodeId,
+        readOnly: readOnly,
+        hasKnownDirection: existing?.direction != null,
+        directionReversed: existing?.directionReversed ?? false,
+        originalLimit: existing?.limit,
+        originalDirection: existing?.direction,
       );
       _draftScreenPosition = Offset(
         screenCoordinate.x / ratio,
@@ -295,12 +329,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _sheetController = _scaffoldKey.currentState!.showBottomSheet(
       (context) => DraftSheet(
         initialLimit: _draft!.limit,
-        onSave: _saveDraft,
+        onSave: readOnly ? null : _saveDraft,
+        limitEditable: !readOnly,
         onCancel: _closeDraft,
-        onDelete: (_draft!.isNew || isOsmSourced) ? null : _deleteDraft,
-        onApprove: isPending ? _approveDraft : null,
+        onDelete: (_draft!.isNew || isOsmSourced || readOnly) ? null : _deleteDraft,
+        onApprove: (isPending && !readOnly) ? _approveDraft : null,
         onPublishToOsm: _draft!.canPublishToOsm ? _publishToOsm : null,
         onSaveOsmEdit: _draft!.canEditOsm ? _saveOsmEdit : null,
+        originalLimit: _draft!.originalLimit,
+        originalDirection: _draft!.originalDirection,
+        currentDirection: _draft!.direction,
+        hasKnownDirection: _draft!.hasKnownDirection,
+        directionReversed: _draft!.directionReversed,
+        onDirectionReversedChanged:
+            _draft!.hasKnownDirection ? _onDirectionReversedPreview : null,
+        onSaveReversedOnly: (readOnly && _draft!.hasKnownDirection) ? _saveReversedOnly : null,
+        isIgnored: isIgnored,
+        onIgnore: ignoreCallback,
+        onUnignore: unignoreCallback,
       ),
     );
     _sheetController!.closed.then((_) {
@@ -356,6 +402,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       limit: limit,
       direction: direction,
       geohash: geohash,
+      directionReversed: draft.directionReversed,
     );
     return draft.existingId!;
   }
@@ -441,6 +488,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  /// Live-previews the local-only "verso contrario" flag (the draft
+  /// overlay's arrow) as the user toggles it in the sheet — doesn't persist
+  /// anything; that only happens when a save action actually fires (they
+  /// read the latest value back from `_draft`), so "Annulla" leaves the
+  /// camera untouched and the toggle can be flipped back and forth freely.
+  void _onDirectionReversedPreview(bool reversed) {
+    final draft = _draft;
+    if (draft == null) return;
+    setState(() => _draft = draft.copyWith(directionReversed: reversed));
+  }
+
+  /// Saves just the "verso contrario" flag — the only persistable action in
+  /// the edit sheet's read-only tier (not owned, no OpenStreetMap login),
+  /// where none of the other save actions are available.
+  Future<void> _saveReversedOnly() async {
+    final draft = _draft;
+    final id = draft?.existingId;
+    if (draft == null || id == null) return;
+    await ref.read(speedCameraRepositoryProvider).updateDirectionReversed(
+      id,
+      draft.directionReversed,
+    );
+    _closeDraft();
+  }
+
   /// Updates `maxspeed`/`direction` on a camera's existing live
   /// OpenStreetMap node (features.md 4) — after an explicit confirmation,
   /// since this writes real, public data. Also refreshes the local Firestore
@@ -478,9 +550,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       await OsmEditService().updateNode(nodeId, limit: limit, direction: direction);
       final existingId = draft.existingId;
       if (existingId != null) {
-        await ref
-            .read(speedCameraRepositoryProvider)
-            .updateCamera(existingId, limit: limit, direction: direction);
+        await ref.read(speedCameraRepositoryProvider).updateCamera(
+          existingId,
+          limit: limit,
+          direction: direction,
+          directionReversed: draft.directionReversed,
+        );
       }
       _closeDraft();
       if (mounted) {
@@ -554,6 +629,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final draft = _draft;
     final screenPosition = _draftScreenPosition;
     if (draft == null || screenPosition == null) return;
+    if (draft.readOnly) return;
     // Editing an OpenStreetMap-sourced camera only allows correcting its
     // limit/direction (see _saveOsmEdit) — its position is OSM's, not ours
     // to move.
@@ -575,11 +651,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _onHandlePanUpdate(DragUpdateDetails details) {
     final draft = _draft;
-    if (draft == null) return;
-    // The handle sits opposite the travel direction (see DraftOverlay), so
-    // its screen angle is offset by 180° from draft.direction — then
+    if (draft == null || draft.readOnly) return;
+    // The handle sits concordant with draft.direction (see DraftOverlay),
     // corrected for the map's own rotation, same as DraftOverlay's build().
-    final thetaRad = (draft.direction - _currentBearing) * pi / 180 + pi;
+    final thetaRad = (draft.direction - _currentBearing) * pi / 180;
     // Tangential component of the drag, perpendicular to the current
     // handle direction, turned into an angle change around the marker.
     final tangential =
@@ -587,6 +662,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final deltaAngleDeg = tangential / DraftOverlay.handleDistancePx * 180 / pi;
     final newDirection = ((draft.direction + deltaAngleDeg) % 360 + 360) % 360;
     setState(() => _draft = draft.copyWith(direction: newDirection));
+    // The persistent bottom sheet's builder isn't re-invoked by this State's
+    // own setState (per showBottomSheet's own docs) — force it to rebuild so
+    // DraftSheet's "Salva su OpenStreetMap" enabled-state, which depends on
+    // the live direction, picks up the new value.
+    _sheetController?.setState?.call(() {});
   }
 
   Future<void> _onMarkerTap(SpeedCamera camera) async {
@@ -601,6 +681,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // directly on OSM once the user is signed in (features.md 4).
     if (camera.osmId != null && await OsmAuthService().isLinked()) {
       if (!mounted) return;
+      await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+      return;
+    }
+    // Any camera with a known direction opens the (read-only, aside from
+    // the local "verso contrario" toggle and OSM ignore/unignore) edit
+    // sheet instead of the plain details one, so that toggle stays
+    // reachable regardless of ownership/OSM login.
+    if (camera.direction != null) {
       await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
       return;
     }

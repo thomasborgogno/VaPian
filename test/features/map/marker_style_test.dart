@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('markerColorFor', () {
-    test('OpenStreetMap cameras are green regardless of status', () {
+    test('OpenStreetMap cameras are blue regardless of status', () {
       const camera = SpeedCamera(
         id: 'cam1',
         lat: 0,
@@ -14,10 +14,10 @@ void main() {
         source: SpeedCameraSource.openstreetmap,
         geohash: 'x',
       );
-      expect(markerColorFor(camera), speedCameraGreen);
+      expect(markerColorFor(camera), speedCameraOSM);
     });
 
-    test('approved user reports are blue', () {
+    test('approved user reports are red', () {
       const camera = SpeedCamera(
         id: 'cam1',
         lat: 0,
@@ -27,7 +27,7 @@ void main() {
         source: SpeedCameraSource.user,
         geohash: 'x',
       );
-      expect(markerColorFor(camera), speedCameraBlue);
+      expect(markerColorFor(camera), speedCameraUser);
     });
 
     test('pending user reports are orange', () {
@@ -40,7 +40,7 @@ void main() {
         source: SpeedCameraSource.user,
         geohash: 'x',
       );
-      expect(markerColorFor(camera), speedCameraOrange);
+      expect(markerColorFor(camera), speedCameraDraft);
     });
   });
 }

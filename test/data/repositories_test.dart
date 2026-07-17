@@ -154,6 +154,25 @@ void main() {
       expect(snapshot.docs, hasLength(1));
       expect(snapshot.docs.single.data()['limit'], 70);
     });
+
+    test('updateDirectionReversed flips only that field, for any source', () async {
+      const camera = SpeedCamera(
+        id: 'osm_9',
+        lat: 45.0,
+        lng: 9.0,
+        direction: 90,
+        status: SpeedCameraStatus.approved,
+        source: SpeedCameraSource.openstreetmap,
+        geohash: 'x',
+      );
+      await repository.upsertOsmCamera(camera);
+
+      await repository.updateDirectionReversed('osm_9', true);
+
+      final snapshot = await firestore.collection('speed_cameras').doc('osm_9').get();
+      expect(snapshot.data()!['directionReversed'], isTrue);
+      expect(snapshot.data()!['direction'], 90);
+    });
   });
 
   group('SettingsRepository', () {

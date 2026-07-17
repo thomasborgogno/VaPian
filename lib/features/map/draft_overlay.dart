@@ -40,16 +40,21 @@ class DraftOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Screen-space heading of the handle: opposite the direction of travel
-    // (so it sits on the same side as the radar cone, see
-    // SpeedCameraMarkerIcons), then corrected for the map's own rotation —
-    // draft.direction is a compass bearing, but screen "up" only means
-    // "north" when bearing is 0.
+    // Screen-space heading of the handle: concordant with `draft.direction`
+    // (the raw OSM-facing bearing the handle drags), corrected for the
+    // map's own rotation — draft.direction is a compass bearing, but screen
+    // "up" only means "north" when bearing is 0. Kept independent of
+    // `directionReversed`: the handle always adjusts the raw bearing.
     final screenDirection = draft.direction - bearing;
-    final theta = screenDirection * pi / 180 + pi;
+    final theta = screenDirection * pi / 180;
     final handlePosition =
         markerPosition +
         Offset(handleDistancePx * sin(theta), -handleDistancePx * cos(theta));
+    // The glyph's arrow shows the monitored travel direction, which is the
+    // opposite bearing from the raw one when `directionReversed` is set.
+    final glyphRotation = draft.directionReversed
+        ? screenDirection + 180
+        : screenDirection;
 
     return Stack(
       children: [
@@ -65,8 +70,8 @@ class DraftOverlay extends StatelessWidget {
               height: SpeedCameraMarkerIcons.height,
               child: CustomPaint(
                 painter: DraftMarkerPainter(
-                  color: speedCameraOrange,
-                  rotationDegrees: screenDirection,
+                  color: speedCameraDraft,
+                  rotationDegrees: glyphRotation,
                 ),
               ),
             ),

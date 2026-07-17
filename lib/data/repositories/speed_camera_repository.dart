@@ -65,7 +65,9 @@ class SpeedCameraRepository {
   }
 
   /// Corrects an existing report's position/limit/direction (e.g. after
-  /// dragging the marker or its direction handle on the map).
+  /// dragging the marker or its direction handle on the map), and/or the
+  /// local-only `directionReversed` flag (never published to OSM — see
+  /// [SpeedCamera.directionReversed]).
   Future<void> updateCamera(
     String id, {
     double? lat,
@@ -73,6 +75,7 @@ class SpeedCameraRepository {
     int? limit,
     int? direction,
     String? geohash,
+    bool? directionReversed,
   }) {
     return _collection.doc(id).update({
       'lat': ?lat,
@@ -80,6 +83,18 @@ class SpeedCameraRepository {
       'limit': ?limit,
       'direction': ?direction,
       'geohash': ?geohash,
+      'directionReversed': ?directionReversed,
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
+
+  /// Saves the local-only "camera mounted facing the other way" flag
+  /// (features.md — never published to OSM, see [SpeedCamera.directionReversed])
+  /// on its own — used by the read-only tier of the edit sheet, where this
+  /// toggle is the only thing the current user is allowed to save.
+  Future<void> updateDirectionReversed(String id, bool reversed) {
+    return _collection.doc(id).update({
+      'directionReversed': reversed,
       'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
   }

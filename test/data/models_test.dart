@@ -66,6 +66,68 @@ void main() {
       final restored = SpeedCamera.fromMap('osm_1', map);
       expect(restored.limit, isNull);
     });
+
+    group('monitoredTravelDirectionDeg', () {
+      test('is null when direction is unknown', () {
+        const camera = SpeedCamera(
+          id: 'cam1',
+          lat: 0,
+          lng: 0,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.openstreetmap,
+          geohash: 'x',
+        );
+        expect(camera.monitoredTravelDirectionDeg, isNull);
+      });
+
+      test('equals the raw direction tag by default (not reversed)', () {
+        const camera = SpeedCamera(
+          id: 'cam1',
+          lat: 0,
+          lng: 0,
+          direction: 90,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.openstreetmap,
+          geohash: 'x',
+        );
+        expect(camera.monitoredTravelDirectionDeg, 90);
+      });
+
+      test('is flipped 180 degrees when directionReversed is set', () {
+        const camera = SpeedCamera(
+          id: 'cam1',
+          lat: 0,
+          lng: 0,
+          direction: 90,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.openstreetmap,
+          geohash: 'x',
+          directionReversed: true,
+        );
+        expect(camera.monitoredTravelDirectionDeg, 270);
+      });
+    });
+
+    test('directionReversed round-trips through toMap/fromMap and defaults to false', () {
+      const camera = SpeedCamera(
+        id: 'cam1',
+        lat: 0,
+        lng: 0,
+        direction: 90,
+        status: SpeedCameraStatus.approved,
+        source: SpeedCameraSource.openstreetmap,
+        geohash: 'x',
+        directionReversed: true,
+      );
+
+      final restored = SpeedCamera.fromMap('cam1', camera.toMap());
+      expect(restored.directionReversed, isTrue);
+
+      final defaulted = SpeedCamera.fromMap('cam1', {
+        ...camera.toMap(),
+      }..remove('directionReversed'));
+      expect(defaulted.directionReversed, isFalse);
+    });
   });
 
   group('UserSettings', () {

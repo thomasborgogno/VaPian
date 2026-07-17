@@ -31,6 +31,7 @@ class SpeedCamera {
     this.updatedAt,
     this.osmNodeId,
     this.osmNodeVersion,
+    this.directionReversed = false,
   });
 
   factory SpeedCamera.fromMap(String id, Map<String, dynamic> map) {
@@ -48,6 +49,7 @@ class SpeedCamera {
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
       osmNodeId: map['osmNodeId'] as int?,
       osmNodeVersion: map['osmNodeVersion'] as int?,
+      directionReversed: map['directionReversed'] as bool? ?? false,
     );
   }
 
@@ -73,6 +75,14 @@ class SpeedCamera {
   final int? osmNodeId;
   final int? osmNodeVersion;
 
+  /// Local-only flag (never published to OSM — omitted from
+  /// `osm_edit_service.dart`'s node XML builders): some cameras are mounted
+  /// facing the opposite way of the convention the app otherwise assumes,
+  /// so `direction` (OSM's "direction the camera is facing" tag) doesn't
+  /// match the direction of travel it actually monitors. See
+  /// [monitoredTravelDirectionDeg].
+  final bool directionReversed;
+
   /// The live OpenStreetMap node id backing this camera, if any — either an
   /// Overpass-imported node (`source: 'openstreetmap'`, id `osm_<nodeId>`,
   /// see `OverpassService`) or a user report already published to OSM
@@ -82,6 +92,17 @@ class SpeedCamera {
     if (osmNodeId != null) return osmNodeId;
     if (id.startsWith('osm_')) return int.tryParse(id.substring(4));
     return null;
+  }
+
+  /// Compass bearing of the traffic this camera actually monitors — by
+  /// default assumed equal to [direction], flipped 180° when
+  /// [directionReversed] marks this as one of the minority of cameras
+  /// mounted the other way around. Used for both the marker/arrow graphic
+  /// and the navigation-mode proximity matching.
+  int? get monitoredTravelDirectionDeg {
+    final dir = direction;
+    if (dir == null) return null;
+    return directionReversed ? (dir + 180) % 360 : dir;
   }
 
   Map<String, dynamic> toMap() {
@@ -98,6 +119,7 @@ class SpeedCamera {
       if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
       if (osmNodeId != null) 'osmNodeId': osmNodeId,
       if (osmNodeVersion != null) 'osmNodeVersion': osmNodeVersion,
+      'directionReversed': directionReversed,
     };
   }
 
@@ -114,6 +136,7 @@ class SpeedCamera {
     DateTime? updatedAt,
     int? osmNodeId,
     int? osmNodeVersion,
+    bool? directionReversed,
   }) {
     return SpeedCamera(
       id: id,
@@ -129,6 +152,7 @@ class SpeedCamera {
       updatedAt: updatedAt ?? this.updatedAt,
       osmNodeId: osmNodeId ?? this.osmNodeId,
       osmNodeVersion: osmNodeVersion ?? this.osmNodeVersion,
+      directionReversed: directionReversed ?? this.directionReversed,
     );
   }
 }

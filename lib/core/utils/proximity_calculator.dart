@@ -16,8 +16,10 @@ double angularDifferenceDeg(double a, double b) {
 
 /// True when [camera] is roughly ahead of a driver at ([userLat], [userLng])
 /// travelling on bearing [headingDeg] — the bearing from the driver to the
-/// camera must be within [_aheadToleranceDeg], and, if the camera has a known
-/// `direction` tag, the driver's heading must also roughly match it (within
+/// camera must be within [_aheadToleranceDeg], and, if the camera monitors a
+/// known travel direction (`SpeedCamera.monitoredTravelDirectionDeg` — the
+/// raw `direction` tag corrected for the local-only `directionReversed`
+/// flag), the driver's heading must also roughly match it (within
 /// [_cameraDirectionToleranceDeg]) so only same-direction cameras alert.
 bool isAheadInTravelDirection({
   required double userLat,
@@ -29,8 +31,8 @@ bool isAheadInTravelDirection({
   if (angularDifferenceDeg(headingDeg, bearingToCamera) > _aheadToleranceDeg) {
     return false;
   }
-  final cameraDirection = camera.direction;
-  if (cameraDirection == null) return true;
-  return angularDifferenceDeg(headingDeg, cameraDirection.toDouble()) <=
+  final travelDirection = camera.monitoredTravelDirectionDeg;
+  if (travelDirection == null) return true;
+  return angularDifferenceDeg(headingDeg, travelDirection.toDouble()) <=
       _cameraDirectionToleranceDeg;
 }

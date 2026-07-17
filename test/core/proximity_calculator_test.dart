@@ -2,7 +2,12 @@ import 'package:autovelox_app/core/utils/proximity_calculator.dart';
 import 'package:autovelox_app/data/models/speed_camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-SpeedCamera _camera({required double lat, required double lng, int? direction}) {
+SpeedCamera _camera({
+  required double lat,
+  required double lng,
+  int? direction,
+  bool directionReversed = false,
+}) {
   return SpeedCamera(
     id: 'x',
     lat: lat,
@@ -11,6 +16,7 @@ SpeedCamera _camera({required double lat, required double lng, int? direction}) 
     source: SpeedCameraSource.openstreetmap,
     geohash: 'x',
     direction: direction,
+    directionReversed: directionReversed,
   );
 }
 
@@ -67,6 +73,24 @@ void main() {
       final oncoming = _camera(lat: 1.0, lng: 0.0, direction: 180);
       expect(
         isAheadInTravelDirection(userLat: 0, userLng: 0, headingDeg: 0, camera: oncoming),
+        isFalse,
+      );
+    });
+
+    test('directionReversed flips which raw tag value counts as matching', () {
+      // Same raw tag (180) as the "oncoming"/false case above, but flagged
+      // as mounted the other way around — should now match.
+      final reversed = _camera(lat: 1.0, lng: 0.0, direction: 180, directionReversed: true);
+      expect(
+        isAheadInTravelDirection(userLat: 0, userLng: 0, headingDeg: 0, camera: reversed),
+        isTrue,
+      );
+    });
+
+    test('directionReversed can also turn a previously-matching tag into a non-match', () {
+      final reversed = _camera(lat: 1.0, lng: 0.0, direction: 0, directionReversed: true);
+      expect(
+        isAheadInTravelDirection(userLat: 0, userLng: 0, headingDeg: 0, camera: reversed),
         isFalse,
       );
     });

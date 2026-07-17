@@ -67,8 +67,9 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   Future<void> _rebuildCameraMarker() async {
     final camera = widget.controller.state.camera;
     if (camera == null) {
-      if (_cameraMarker != null && mounted)
+      if (_cameraMarker != null && mounted) {
         setState(() => _cameraMarker = null);
+      }
       return;
     }
     final icon = await SpeedCameraMarkerIcons.forColor(
@@ -82,7 +83,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
         position: LatLng(camera.lat, camera.lng),
         icon: icon,
         anchor: SpeedCameraMarkerIcons.anchor,
-        rotation: camera.direction?.toDouble() ?? 0,
+        rotation: camera.monitoredTravelDirectionDeg?.toDouble() ?? 0,
         flat: true,
       );
     });
