@@ -134,11 +134,11 @@ class GeohashQueryBounds {
 
 /// Single-cell prefix range for a Firestore `geohash` field query.
 ///
-/// This is a simple approximation (one geohash cell, not the full 9-cell
-/// neighbor coverage of GeoFire-style libraries): points near a cell edge
-/// may be missed. Good enough for the foundational repository layer; the
-/// map feature (Phase 1) upgrades to `geoflutterfire_plus` for accurate
-/// "cameras in view" queries.
+/// This only covers the one geohash cell containing ([latitude], [longitude])
+/// -- a point within [radiusMeters] can easily fall in a neighboring cell
+/// (geohash cells are fixed-position rectangles, unrelated to the query
+/// point's location inside them). Prefer [geohashNeighborPrefixes], which
+/// covers this cell plus its 8 neighbors, for any "cameras near me" query.
 GeohashQueryBounds geohashQueryBounds(
   double latitude,
   double longitude,
@@ -147,4 +147,82 @@ GeohashQueryBounds geohashQueryBounds(
   final precision = geohashPrecisionForRadiusMeters(radiusMeters);
   final hash = encodeGeohash(latitude, longitude, precision: precision);
   return GeohashQueryBounds(hash, '$hash');
+}
+
+/// Decodes a geohash back to the lat/lng bounding box it represents, using
+/// the same bit-interleaving as [encodeGeohash] (so the two stay in sync).
+({double latMin, double latMax, double lngMin, double lngMax})
+    _geohashBounds(String hash) {
+  var latMin = -90.0, latMax = 90.0;
+  var lngMin = -180.0, lngMax = 180.0;
+  var evenBit = true;
+  for (final char in hash.split('')) {
+    final index = _geohashBase32.indexOf(char);
+    for (var n = 4; n >= 0; n--) {
+      final bit = (index >> n) & 1;
+      if (evenBit) {
+        final mid = (lngMin + lngMax) / 2;
+        if (bit == 1) {
+          lngMin = mid;
+        } else {
+          lngMax = mid;
+        }
+      } else {
+        final mid = (latMin + latMax) / 2;
+        if (bit == 1) {
+          latMin = mid;
+        } else {
+          latMax = mid;
+        }
+      }
+      evenBit = !evenBit;
+    }
+  }
+  return (latMin: latMin, latMax: latMax, lngMin: lngMin, lngMax: lngMax);
+}
+
+/// Geohash prefixes for the cell containing ([latitude], [longitude]) plus
+/// its 8 neighbors, at the precision [geohashPrecisionForRadiusMeters] picks
+/// for [radiusMeters] -- the standard GeoFire-style "9-cell" coverage so a
+/// point within the radius isn't missed just because it sits in an adjacent
+/// cell rather than the center one (see [geohashQueryBounds]).
+///
+/// Callers query each prefix as its own Firestore range
+/// (`>= prefix && <= prefix + ''`) and merge the results client-side.
+List<String> geohashNeighborPrefixes(
+  double latitude,
+  double longitude,
+  double radiusMeters,
+) {
+  final precision = geohashPrecisionForRadiusMeters(radiusMeters);
+  final centerHash = encodeGeohash(latitude, longitude, precision: precision);
+  final bounds = _geohashBounds(centerHash);
+  final latHeight = bounds.latMax - bounds.latMin;
+  final lngWidth = bounds.lngMax - bounds.lngMin;
+  final centerLat = (bounds.latMin + bounds.latMax) / 2;
+  final centerLng = (bounds.lngMin + bounds.lngMax) / 2;
+
+  double wrapLng(double lng) {
+    var wrapped = lng;
+    while (wrapped > 180) {
+      wrapped -= 360;
+    }
+    while (wrapped < -180) {
+      wrapped += 360;
+    }
+    return wrapped;
+  }
+
+  final prefixes = <String>{centerHash};
+  for (final dLat in [-1, 0, 1]) {
+    for (final dLng in [-1, 0, 1]) {
+      if (dLat == 0 && dLng == 0) continue;
+      final neighborLat = (centerLat + dLat * latHeight).clamp(-90.0, 90.0);
+      final neighborLng = wrapLng(centerLng + dLng * lngWidth);
+      prefixes.add(
+        encodeGeohash(neighborLat, neighborLng, precision: precision),
+      );
+    }
+  }
+  return prefixes.toList();
 }

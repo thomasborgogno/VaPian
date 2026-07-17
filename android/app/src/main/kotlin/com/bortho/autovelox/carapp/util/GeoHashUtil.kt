@@ -81,11 +81,93 @@ object GeoHashUtil {
      * `end` appends `` (above every valid base32 char) so the range
      * matches every full-precision hash that starts with this prefix, not
      * just an exact (never-stored) truncated value.
+     *
+     * This only covers the one geohash cell containing (`latitude`,
+     * `longitude`) — a point within `radiusMeters` can easily fall in a
+     * neighboring cell (geohash cells are fixed-position rectangles,
+     * unrelated to the query point's location inside them). Prefer
+     * [neighborPrefixes], which covers this cell plus its 8 neighbors, for
+     * any "cameras near me" query.
      */
     fun queryBounds(latitude: Double, longitude: Double, radiusMeters: Double): QueryBounds {
         val precision = precisionForRadiusMeters(radiusMeters)
         val hash = encode(latitude, longitude, precision)
         return QueryBounds(hash, "$hash")
+    }
+
+    private data class CellBounds(
+        val latMin: Double,
+        val latMax: Double,
+        val lngMin: Double,
+        val lngMax: Double,
+    )
+
+    /**
+     * Decodes a geohash back to the lat/lng bounding box it represents,
+     * using the same bit-interleaving as [encode] (so the two stay in
+     * sync) -- 1:1 port of `_geohashBounds` in `lib/core/utils/geo.dart`.
+     */
+    private fun decodeBounds(hash: String): CellBounds {
+        var latMin = -90.0
+        var latMax = 90.0
+        var lngMin = -180.0
+        var lngMax = 180.0
+        var evenBit = true
+        for (char in hash) {
+            val index = BASE32.indexOf(char)
+            for (n in 4 downTo 0) {
+                val bit = (index shr n) and 1
+                if (evenBit) {
+                    val mid = (lngMin + lngMax) / 2
+                    if (bit == 1) lngMin = mid else lngMax = mid
+                } else {
+                    val mid = (latMin + latMax) / 2
+                    if (bit == 1) latMin = mid else latMax = mid
+                }
+                evenBit = !evenBit
+            }
+        }
+        return CellBounds(latMin, latMax, lngMin, lngMax)
+    }
+
+    private fun wrapLng(lng: Double): Double {
+        var wrapped = lng
+        while (wrapped > 180) wrapped -= 360
+        while (wrapped < -180) wrapped += 360
+        return wrapped
+    }
+
+    /**
+     * Geohash prefixes for the cell containing (`latitude`, `longitude`)
+     * plus its 8 neighbors, at the precision [precisionForRadiusMeters]
+     * picks for `radiusMeters` -- the standard GeoFire-style "9-cell"
+     * coverage so a point within the radius isn't missed just because it
+     * sits in an adjacent cell rather than the center one (see
+     * [queryBounds]). 1:1 port of `geohashNeighborPrefixes` in
+     * `lib/core/utils/geo.dart`.
+     *
+     * Callers query each prefix as its own Firestore range
+     * (`>= prefix && <= prefix + ""`) and merge the results client-side.
+     */
+    fun neighborPrefixes(latitude: Double, longitude: Double, radiusMeters: Double): Set<String> {
+        val precision = precisionForRadiusMeters(radiusMeters)
+        val centerHash = encode(latitude, longitude, precision)
+        val bounds = decodeBounds(centerHash)
+        val latHeight = bounds.latMax - bounds.latMin
+        val lngWidth = bounds.lngMax - bounds.lngMin
+        val centerLat = (bounds.latMin + bounds.latMax) / 2
+        val centerLng = (bounds.lngMin + bounds.lngMax) / 2
+
+        val prefixes = linkedSetOf(centerHash)
+        for (dLat in -1..1) {
+            for (dLng in -1..1) {
+                if (dLat == 0 && dLng == 0) continue
+                val neighborLat = (centerLat + dLat * latHeight).coerceIn(-90.0, 90.0)
+                val neighborLng = wrapLng(centerLng + dLng * lngWidth)
+                prefixes.add(encode(neighborLat, neighborLng, precision))
+            }
+        }
+        return prefixes
     }
 
     fun haversineDistanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {

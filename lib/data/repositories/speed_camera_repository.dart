@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/utils/geo.dart';
@@ -16,22 +18,60 @@ class SpeedCameraRepository {
   /// Cameras within [radiusMeters] of ([lat], [lng]), regardless of
   /// `status`/`source` — callers filter further as needed (e.g. hide
   /// `pending` on the driving path).
+  ///
+  /// Queries the geohash cell containing ([lat], [lng]) plus its 8
+  /// neighbors ([geohashNeighborPrefixes]) and merges the results
+  /// client-side: a point within the radius can fall in a neighboring cell
+  /// rather than the center one, so querying only the center cell silently
+  /// misses cameras near a cell edge.
   Stream<List<SpeedCamera>> watchNear(
     double lat,
     double lng,
     double radiusMeters,
   ) {
-    final bounds = geohashQueryBounds(lat, lng, radiusMeters);
-    return _collection
-        .where('geohash', isGreaterThanOrEqualTo: bounds.start)
-        .where('geohash', isLessThanOrEqualTo: bounds.end)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map(SpeedCamera.fromFirestore)
-            .where((camera) =>
-                haversineDistanceMeters(lat, lng, camera.lat, camera.lng) <=
-                radiusMeters)
-            .toList());
+    final prefixes = geohashNeighborPrefixes(lat, lng, radiusMeters);
+    final camerasByPrefix = <String, Map<String, SpeedCamera>>{};
+    final pendingInitial = prefixes.toSet();
+    final subscriptions = <StreamSubscription<void>>[];
+    late final StreamController<List<SpeedCamera>> controller;
+
+    void emit() {
+      final merged = <String, SpeedCamera>{};
+      for (final byId in camerasByPrefix.values) {
+        merged.addAll(byId);
+      }
+      controller.add(merged.values
+          .where((camera) =>
+              haversineDistanceMeters(lat, lng, camera.lat, camera.lng) <=
+              radiusMeters)
+          .toList());
+    }
+
+    controller = StreamController<List<SpeedCamera>>.broadcast(
+      onListen: () {
+        for (final prefix in prefixes) {
+          subscriptions.add(_collection
+              .where('geohash', isGreaterThanOrEqualTo: prefix)
+              .where('geohash', isLessThanOrEqualTo: '$prefix')
+              .snapshots()
+              .listen((snapshot) {
+            camerasByPrefix[prefix] = {
+              for (final doc in snapshot.docs)
+                doc.id: SpeedCamera.fromFirestore(doc),
+            };
+            pendingInitial.remove(prefix);
+            if (pendingInitial.isEmpty) emit();
+          }, onError: controller.addError));
+        }
+      },
+      onCancel: () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      },
+    );
+
+    return controller.stream;
   }
 
   Future<String> addCamera(SpeedCamera camera) async {

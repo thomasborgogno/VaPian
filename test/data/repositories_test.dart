@@ -1,3 +1,4 @@
+import 'package:autovelox_app/core/utils/geo.dart';
 import 'package:autovelox_app/data/models/speed_camera.dart';
 import 'package:autovelox_app/data/models/user_settings.dart';
 import 'package:autovelox_app/data/repositories/blacklist_repository.dart';
@@ -51,6 +52,37 @@ void main() {
       final cameras = await repository.watchNear(41.9028, 12.4964, 5000).first;
 
       expect(cameras, isEmpty);
+    });
+
+    test(
+        'watchNear finds a camera whose stored geohash falls in a '
+        "neighboring cell, not the query center's", () async {
+      const lat = 41.9028;
+      const lng = 12.4964;
+      const radiusMeters = 5000.0;
+      final precision = geohashPrecisionForRadiusMeters(radiusMeters);
+      final centerPrefix = encodeGeohash(lat, lng, precision: precision);
+      final neighborPrefix = geohashNeighborPrefixes(lat, lng, radiusMeters)
+          .firstWhere((prefix) => prefix != centerPrefix);
+
+      // The camera sits right at the query center (distance 0, always within
+      // radius) but its geohash belongs to a neighboring cell -- exactly the
+      // case a single-cell query silently drops, since it never asks
+      // Firestore for that prefix at all.
+      await repository.addCamera(
+        SpeedCamera(
+          id: '',
+          lat: lat,
+          lng: lng,
+          status: SpeedCameraStatus.approved,
+          source: SpeedCameraSource.openstreetmap,
+          geohash: neighborPrefix.padRight(9, '0'),
+        ),
+      );
+
+      final cameras = await repository.watchNear(lat, lng, radiusMeters).first;
+
+      expect(cameras, hasLength(1));
     });
 
     test('deleteCamera removes the document', () async {

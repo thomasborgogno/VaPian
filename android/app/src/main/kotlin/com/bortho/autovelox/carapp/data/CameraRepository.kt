@@ -21,24 +21,46 @@ class CameraRepository(
     /**
      * Cameras within [radiusMeters] of ([lat], [lng]), regardless of
      * `status`/`source` — callers filter further as needed (e.g. hide
-     * `pending` on the driving path). Same single-cell geohash-prefix
-     * approximation as the Dart repository.
+     * `pending` on the driving path).
+     *
+     * Queries the geohash cell containing ([lat], [lng]) plus its 8
+     * neighbors ([GeoHashUtil.neighborPrefixes]) and merges the results
+     * client-side, same as the Dart repository: a point within the radius
+     * can fall in a neighboring cell rather than the center one, so
+     * querying only the center cell silently misses cameras near a cell
+     * edge.
      */
     fun watchNear(lat: Double, lng: Double, radiusMeters: Double): Flow<List<SpeedCamera>> = callbackFlow {
-        val bounds = GeoHashUtil.queryBounds(lat, lng, radiusMeters)
-        val registration = collection
-            .whereGreaterThanOrEqualTo("geohash", bounds.start)
-            .whereLessThanOrEqualTo("geohash", bounds.end)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) return@addSnapshotListener
-                val cameras = snapshot.documents
-                    .mapNotNull(SpeedCamera::fromDocument)
-                    .filter {
-                        GeoHashUtil.haversineDistanceMeters(lat, lng, it.lat, it.lng) <= radiusMeters
-                    }
-                trySend(cameras)
+        val prefixes = GeoHashUtil.neighborPrefixes(lat, lng, radiusMeters)
+        val camerasByPrefix = mutableMapOf<String, Map<String, SpeedCamera>>()
+        val pendingInitial = prefixes.toMutableSet()
+
+        fun emit() {
+            val merged = mutableMapOf<String, SpeedCamera>()
+            for (byId in camerasByPrefix.values) {
+                merged.putAll(byId)
             }
-        awaitClose { registration.remove() }
+            trySend(
+                merged.values.filter {
+                    GeoHashUtil.haversineDistanceMeters(lat, lng, it.lat, it.lng) <= radiusMeters
+                },
+            )
+        }
+
+        val registrations = prefixes.map { prefix ->
+            collection
+                .whereGreaterThanOrEqualTo("geohash", prefix)
+                .whereLessThanOrEqualTo("geohash", "$prefix")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) return@addSnapshotListener
+                    camerasByPrefix[prefix] = snapshot.documents
+                        .mapNotNull(SpeedCamera::fromDocument)
+                        .associateBy { it.id }
+                    pendingInitial.remove(prefix)
+                    if (pendingInitial.isEmpty()) emit()
+                }
+        }
+        awaitClose { registrations.forEach { it.remove() } }
     }
 
     /**
