@@ -22,7 +22,7 @@ class SyncMetadata {
     };
   }
 
-  bool isStale({Duration staleAfter = const Duration(days: 7)}) {
+  bool isStale({Duration staleAfter = const Duration(days: 15)}) {
     final syncedAt = lastSyncAt;
     if (syncedAt == null) return true;
     return DateTime.now().difference(syncedAt) > staleAfter;

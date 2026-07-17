@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
 /// features.md 2.2 Smart Reminder: shown when the global OSM sync is more
-/// than 7 days old (or has never run) — dismissing it is per-session only,
+/// than 15 days old (or has never run) — dismissing it is per-session only,
 /// it comes back next time the map screen is rebuilt while still stale.
 class SyncReminderBanner extends StatelessWidget {
-  const SyncReminderBanner({super.key, required this.onSync, required this.onDismiss});
+  const SyncReminderBanner({
+    super.key,
+    required this.onSync,
+    required this.onDismiss,
+  });
 
   final VoidCallback onSync;
   final VoidCallback onDismiss;

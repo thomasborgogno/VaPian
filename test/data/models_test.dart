@@ -108,7 +108,10 @@ void main() {
 
   group('IgnoredCamera', () {
     test('round-trips through toMap/fromMap', () {
-      final ignored = IgnoredCamera(cameraId: 'cam1', ignoredAt: DateTime(2026, 1, 1));
+      final ignored = IgnoredCamera(
+        cameraId: 'cam1',
+        ignoredAt: DateTime(2026, 1, 1),
+      );
       final restored = IgnoredCamera.fromMap('cam1', ignored.toMap());
       expect(restored.cameraId, 'cam1');
       expect(restored.ignoredAt, isNotNull);
@@ -126,9 +129,9 @@ void main() {
       expect(metadata.isStale(), isFalse);
     });
 
-    test('is stale after the 7-day smart reminder window', () {
+    test('is stale after the 15-day smart reminder window', () {
       final metadata = SyncMetadata(
-        lastSyncAt: DateTime.now().subtract(const Duration(days: 8)),
+        lastSyncAt: DateTime.now().subtract(const Duration(days: 16)),
       );
       expect(metadata.isStale(), isTrue);
     });

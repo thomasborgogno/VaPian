@@ -29,7 +29,7 @@ L'applicazione fa del crowdsourcing e della filosofia open-source i suoi pilastr
 ### 2.2 Impostazioni dell'Applicazione
 * **Sincronizzazione OpenStreetMap (OSM):**
   * Pulsante dedicato al download manuale dei nodi `highway=speed_camera` e `enforcement=maxspeed` dall'API di Overpass Turbo.
-  * *Smart Reminder:* Se l'ultima sincronizzazione locale/cloud risale a più di 7 giorni prima, nella Home Page viene mostrato un banner discreto: *"I dati degli autovelox potrebbero non essere aggiornati. Sincronizza ora con OpenStreetMap"*.
+  * *Smart Reminder:* Se l'ultima sincronizzazione locale/cloud risale a più di 15 giorni prima, nella Home Page viene mostrato un banner discreto: *"I dati degli autovelox potrebbero non essere aggiornati. Sincronizza ora con OpenStreetMap"*.
 * **Configurazione Distanza di Preavviso:**
   * *Opzione Fissa:* Scelta utente tramite slider (Default: 300 metri, range 100m - 1000m).
   * *Opzione Dinamica:* Calcolo algoritmico in tempo reale basato sullo scostamento tra la velocità istantanea ($V_{ist}$) del veicolo e il limite del velox ($V_{lim}$). Più il veicolo procede velocemente o oltre il limite, più lo spazio di frenata teorico aumenta, anticipando la distanza di attivazione dell'allarme.

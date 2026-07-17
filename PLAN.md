@@ -89,7 +89,7 @@ res/xml/automotive_app_desc.xml  # dichiarazione app Android Auto (categoria, mi
 
 **`users/{uid}`**
 - `settings`: `alertDistanceMode` (`fixed`|`dynamic`), `alertDistanceMeters` (100–1000), `toleranceFilterEnabled` (bool, default true).
-- `osmLinked: bool`, `lastOsmSyncAt: Timestamp` (per lo Smart Reminder dei 7 giorni).
+- `osmLinked: bool`, `lastOsmSyncAt: Timestamp` (per lo Smart Reminder dei 15 giorni).
 - Sottocollezione **`ignored_cameras/{cameraId}`** — sostituisce la "tabella locale" della spec: blacklist per-utente su Firestore, con cache offline automatica su entrambi i lati.
 - Sottocollezione **`queued_ignores/{cameraId}`** (Fase 6) — scritta nativamente dal pulsante "Ignora Velox" in auto (`queuedAt`); il telefono la mostra nella `PendingReviewSheet` esistente (Fase 4) e la promuove a `ignored_cameras` (conferma) o la scarta, così un tap accidentale in guida resta reversibile.
 
