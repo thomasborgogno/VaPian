@@ -27,7 +27,7 @@ class NavigationMapView extends StatefulWidget {
 
 class _NavigationMapViewState extends State<NavigationMapView> {
   GoogleMapController? _mapController;
-  Marker? _cameraMarker;
+  Set<Marker> _cameraMarkers = {};
 
   @override
   void initState() {
@@ -64,28 +64,45 @@ class _NavigationMapViewState extends State<NavigationMapView> {
     );
   }
 
+  /// Same two-marker split as the main map (always-upright badge + a
+  /// separately-rotating arrow, only when a direction is known) — see
+  /// `SpeedCameraMarkerIcons`'s class doc for why a single bitmap can't do
+  /// both.
   Future<void> _rebuildCameraMarker() async {
     final camera = widget.controller.state.camera;
     if (camera == null) {
-      if (_cameraMarker != null && mounted) {
-        setState(() => _cameraMarker = null);
+      if (_cameraMarkers.isNotEmpty && mounted) {
+        setState(() => _cameraMarkers = {});
       }
       return;
     }
-    final icon = await SpeedCameraMarkerIcons.forColor(
-      markerColorFor(camera),
-      hasDirection: camera.direction != null,
-    );
+    final color = markerColorFor(camera);
+    final position = LatLng(camera.lat, camera.lng);
+    final icon = await SpeedCameraMarkerIcons.iconForColor(color);
+    final travelDirection = camera.monitoredTravelDirectionDeg;
+    final arrow = travelDirection != null
+        ? await SpeedCameraMarkerIcons.arrowForColor(color)
+        : null;
     if (!mounted) return;
     setState(() {
-      _cameraMarker = Marker(
-        markerId: MarkerId(camera.id),
-        position: LatLng(camera.lat, camera.lng),
-        icon: icon,
-        anchor: SpeedCameraMarkerIcons.anchor,
-        rotation: camera.monitoredTravelDirectionDeg?.toDouble() ?? 0,
-        flat: true,
-      );
+      _cameraMarkers = {
+        Marker(
+          markerId: MarkerId('${camera.id}_icon'),
+          position: position,
+          icon: icon,
+          anchor: SpeedCameraMarkerIcons.iconAnchor,
+          zIndexInt: 1,
+        ),
+        if (arrow != null)
+          Marker(
+            markerId: MarkerId('${camera.id}_arrow'),
+            position: position,
+            icon: arrow,
+            anchor: SpeedCameraMarkerIcons.arrowAnchor,
+            rotation: travelDirection!.toDouble(),
+            flat: true,
+          ),
+      };
     });
   }
 
@@ -99,7 +116,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
         zoom: 17,
         tilt: 45,
       ),
-      markers: {?_cameraMarker},
+      markers: _cameraMarkers,
       mapType: MapType.normal,
       style: widget.amoled
           ? MapStyleConfig.amoledMapStyleJson

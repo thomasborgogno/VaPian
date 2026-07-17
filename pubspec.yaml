@@ -48,6 +48,7 @@ dependencies:
   flutter_launcher_icons: ^0.14.4
   flutter_tts: ^4.2.4
   wakelock_plus: ^1.3.4
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -78,6 +79,7 @@ flutter:
   #   - images/a_dot_ham.jpeg
   assets:
     - assets/icon/foreground.png
+    - assets/speed_camera_icon.svg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -76,6 +76,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void initState() {
     super.initState();
     _resolveInitialPosition();
+    // Kicks off loading the camera pictogram well before any marker/draft
+    // overlay needs to paint it synchronously.
+    SpeedCameraMarkerIcons.ensureIconLoaded();
   }
 
   /// Rebuilds every camera marker directly (no clustering) — dots
@@ -93,44 +96,65 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         .where((c) => draft == null || c.id != draft.existingId)
         .toList();
 
-    final markers = await Future.wait(
-      cameras.map((c) => _buildMarkerForCamera(c, grayedOut: showIgnoredOnly)),
+    final markerGroups = await Future.wait(
+      cameras.map((c) => _buildMarkersForCamera(c, grayedOut: showIgnoredOnly)),
     );
     if (!mounted) return;
-    setState(() => _markers = markers.toSet());
+    setState(() => _markers = markerGroups.expand((group) => group).toSet());
   }
 
-  Future<Marker> _buildMarkerForCamera(
+  /// One camera renders as either a single dot marker (zoomed out), or —
+  /// above the dot threshold — two independent markers at the same
+  /// position: an always-upright badge (billboard, never rotated) and,
+  /// only when a direction is known, a separately-rotating arrow. A single
+  /// bitmap + `Marker.rotation` can't rotate only part of itself, so this
+  /// is the only way to keep the badge screen-locked while the arrow
+  /// tracks the true monitored bearing (see `SpeedCameraMarkerIcons`).
+  Future<List<Marker>> _buildMarkersForCamera(
     SpeedCamera camera, {
     bool grayedOut = false,
   }) async {
     final color = grayedOut ? speedCameraGray : markerColorFor(camera);
     if (_showDots) {
-      return Marker(
-        markerId: MarkerId(camera.id),
-        position: LatLng(camera.lat, camera.lng),
-        icon: await DotMarkerIcons.forColor(color),
-      );
+      return [
+        Marker(
+          markerId: MarkerId(camera.id),
+          position: LatLng(camera.lat, camera.lng),
+          icon: await DotMarkerIcons.forColor(color),
+        ),
+      ];
     }
-    return Marker(
-      markerId: MarkerId(camera.id),
-      position: LatLng(camera.lat, camera.lng),
-      icon: await SpeedCameraMarkerIcons.forColor(
-        color,
-        hasDirection: camera.direction != null,
-      ),
-      anchor: SpeedCameraMarkerIcons.anchor,
+
+    final position = LatLng(camera.lat, camera.lng);
+    final icon = Marker(
+      markerId: MarkerId('${camera.id}_icon'),
+      position: position,
+      icon: await SpeedCameraMarkerIcons.iconForColor(color),
+      anchor: SpeedCameraMarkerIcons.iconAnchor,
+      zIndexInt: 1,
+      onTap: () => _onMarkerTap(camera),
+    );
+
+    final travelDirection = camera.monitoredTravelDirectionDeg;
+    if (travelDirection == null) return [icon];
+
+    final arrow = Marker(
+      markerId: MarkerId('${camera.id}_arrow'),
+      position: position,
+      icon: await SpeedCameraMarkerIcons.arrowForColor(color),
+      anchor: SpeedCameraMarkerIcons.arrowAnchor,
       // The monitored travel direction, not the raw OSM-facing `direction`
       // tag — they differ when `directionReversed` is set (features.md).
-      rotation: camera.monitoredTravelDirectionDeg?.toDouble() ?? 0,
+      rotation: travelDirection.toDouble(),
       // Without `flat`, a Marker's rotation is a screen-space billboard
       // rotation and ignores the map's own bearing — the arrow would stay
       // screen-up-fixed while the two-finger-rotated map turned under it.
       // `flat` glues it to the ground plane so `rotation` behaves as the
-      // true-north compass bearing it's meant to be.
+      // true-north compass bearing it's meant to be. The icon marker above
+      // deliberately has no `flat`/`rotation` — it must stay upright.
       flat: true,
-      onTap: () => _onMarkerTap(camera),
     );
+    return [icon, arrow];
   }
 
   Future<void> _resolveInitialPosition() async {
@@ -248,6 +272,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
+  /// Re-centers the map so [position] (the marker just tapped) lands in the
+  /// middle of the space still visible above the now-open edit bottom
+  /// sheet, instead of the exact screen center — measured via [sheetKey]
+  /// once the sheet has actually been laid out, since its height depends on
+  /// its content (approve/publish buttons, ignore action, etc). Reuses
+  /// [_screenDeltaToLatLngDelta] (already used for drag math) to convert
+  /// the needed on-screen shift into a lat/lng offset.
+  Future<void> _centerAboveBottomSheet(LatLng position, GlobalKey sheetKey) async {
+    final controller = _controller;
+    if (controller == null || !mounted) return;
+    final sheetHeight = (sheetKey.currentContext?.findRenderObject() as RenderBox?)?.size.height;
+    if (sheetHeight == null || sheetHeight <= 0) return;
+    final delta = _screenDeltaToLatLngDelta(Offset(0, sheetHeight / 2), position.latitude);
+    final target = LatLng(position.latitude + delta.dLat, position.longitude + delta.dLng);
+    await controller.animateCamera(CameraUpdate.newLatLng(target));
+  }
+
   Future<void> _startDraft({
     required LatLng position,
     SpeedCamera? existing,
@@ -326,29 +367,42 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _rebuildMarkers();
 
     final isPending = existing?.status == SpeedCameraStatus.pending;
+    final sheetKey = GlobalKey();
     _sheetController = _scaffoldKey.currentState!.showBottomSheet(
-      (context) => DraftSheet(
-        initialLimit: _draft!.limit,
-        onSave: readOnly ? null : _saveDraft,
-        limitEditable: !readOnly,
-        onCancel: _closeDraft,
-        onDelete: (_draft!.isNew || isOsmSourced || readOnly) ? null : _deleteDraft,
-        onApprove: (isPending && !readOnly) ? _approveDraft : null,
-        onPublishToOsm: _draft!.canPublishToOsm ? _publishToOsm : null,
-        onSaveOsmEdit: _draft!.canEditOsm ? _saveOsmEdit : null,
-        originalLimit: _draft!.originalLimit,
-        originalDirection: _draft!.originalDirection,
-        currentDirection: _draft!.direction,
-        hasKnownDirection: _draft!.hasKnownDirection,
-        directionReversed: _draft!.directionReversed,
-        onDirectionReversedChanged:
-            _draft!.hasKnownDirection ? _onDirectionReversedPreview : null,
-        onSaveReversedOnly: (readOnly && _draft!.hasKnownDirection) ? _saveReversedOnly : null,
-        isIgnored: isIgnored,
-        onIgnore: ignoreCallback,
-        onUnignore: unignoreCallback,
+      (context) => KeyedSubtree(
+        key: sheetKey,
+        child: DraftSheet(
+          initialLimit: _draft!.limit,
+          onSave: readOnly ? null : _saveDraft,
+          limitEditable: !readOnly,
+          onCancel: _closeDraft,
+          onDelete: (_draft!.isNew || isOsmSourced || readOnly) ? null : _deleteDraft,
+          onApprove: (isPending && !readOnly) ? _approveDraft : null,
+          onPublishToOsm: _draft!.canPublishToOsm ? _publishToOsm : null,
+          onSaveOsmEdit: _draft!.canEditOsm ? _saveOsmEdit : null,
+          originalLimit: _draft!.originalLimit,
+          originalDirection: _draft!.originalDirection,
+          currentDirection: _draft!.direction,
+          hasKnownDirection: _draft!.hasKnownDirection,
+          directionReversed: _draft!.directionReversed,
+          onDirectionReversedChanged:
+              _draft!.hasKnownDirection ? _onDirectionReversedPreview : null,
+          onSaveReversedOnly: (readOnly && _draft!.hasKnownDirection) ? _saveReversedOnly : null,
+          isIgnored: isIgnored,
+          onIgnore: ignoreCallback,
+          onUnignore: unignoreCallback,
+        ),
       ),
     );
+    // Tapping an existing marker should bring it into the space actually
+    // left free by the sheet, not the exact screen center — measure the
+    // sheet once it's laid out, then re-center the map so `position` lands
+    // in the middle of the area above it.
+    if (existing != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _centerAboveBottomSheet(position, sheetKey);
+      });
+    }
     _sheetController!.closed.then((_) {
       if (mounted) {
         setState(() {
