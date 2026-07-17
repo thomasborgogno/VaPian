@@ -16,6 +16,8 @@ class CameraDraft {
     this.existingOsmNodeId,
     this.existingOsmNodeVersion,
     this.canPublishToOsm = false,
+    this.canEditOsm = false,
+    this.osmEditNodeId,
   });
 
   final LatLng position;
@@ -35,6 +37,15 @@ class CameraDraft {
   /// (features.md 4) — computed once when the draft starts.
   final bool canPublishToOsm;
 
+  /// True when editing a camera that already has a live OpenStreetMap node
+  /// (an Overpass-imported camera, or a user report already published) and
+  /// the user has an OpenStreetMap account linked — lets them update
+  /// `maxspeed`/`direction` directly on that node. See [SpeedCamera.osmId].
+  final bool canEditOsm;
+
+  /// The OSM node id to update when [canEditOsm] is true.
+  final int? osmEditNodeId;
+
   bool get isNew => existingId == null;
 
   CameraDraft copyWith({LatLng? position, double? direction}) {
@@ -48,6 +59,8 @@ class CameraDraft {
       existingOsmNodeId: existingOsmNodeId,
       existingOsmNodeVersion: existingOsmNodeVersion,
       canPublishToOsm: canPublishToOsm,
+      canEditOsm: canEditOsm,
+      osmEditNodeId: osmEditNodeId,
     );
   }
 }

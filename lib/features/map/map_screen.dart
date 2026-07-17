@@ -243,7 +243,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         existing != null &&
         existing.source == SpeedCameraSource.user &&
         existing.status != SpeedCameraStatus.pending;
-    final osmLinked = isUserReportNotPending
+    final isOsmSourced =
+        existing != null && existing.source == SpeedCameraSource.openstreetmap;
+    final osmEditNodeId = isOsmSourced ? existing.osmId : null;
+    final osmLinked = (isUserReportNotPending || osmEditNodeId != null)
         ? await OsmAuthService().isLinked()
         : false;
 
@@ -263,6 +266,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         existingOsmNodeVersion: existing?.osmNodeVersion,
         canPublishToOsm:
             isUserReportNotPending && osmLinked && existing.osmNodeId == null,
+        canEditOsm: osmEditNodeId != null && osmLinked,
+        osmEditNodeId: osmEditNodeId,
       );
       _draftScreenPosition = Offset(
         screenCoordinate.x / ratio,
@@ -277,9 +282,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         initialLimit: _draft!.limit,
         onSave: _saveDraft,
         onCancel: _closeDraft,
-        onDelete: _draft!.isNew ? null : _deleteDraft,
+        onDelete: (_draft!.isNew || isOsmSourced) ? null : _deleteDraft,
         onApprove: isPending ? _approveDraft : null,
         onPublishToOsm: _draft!.canPublishToOsm ? _publishToOsm : null,
+        onSaveOsmEdit: _draft!.canEditOsm ? _saveOsmEdit : null,
       ),
     );
     _sheetController!.closed.then((_) {
@@ -420,6 +426,62 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  /// Updates `maxspeed`/`direction` on a camera's existing live
+  /// OpenStreetMap node (features.md 4) — after an explicit confirmation,
+  /// since this writes real, public data. Also refreshes the local Firestore
+  /// cache so the map reflects the change without waiting for the next sync.
+  Future<void> _saveOsmEdit(int limit) async {
+    final draft = _draft;
+    final nodeId = draft?.osmEditNodeId;
+    if (draft == null || nodeId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Modifica dati su OpenStreetMap'),
+        content: const Text(
+          'Stai per modificare un nodo pubblico su OpenStreetMap, consultato '
+          'da migliaia di persone. Assicurati che il limite di velocità e la '
+          'direzione indicati siano corretti prima di confermare.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Conferma'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final direction = draft.direction.round();
+      await OsmEditService().updateNode(nodeId, limit: limit, direction: direction);
+      final existingId = draft.existingId;
+      if (existingId != null) {
+        await ref
+            .read(speedCameraRepositoryProvider)
+            .updateCamera(existingId, limit: limit, direction: direction);
+      }
+      _closeDraft();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dati aggiornati su OpenStreetMap.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Modifica OSM non riuscita: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _deleteDraft() async {
     final id = _draft?.existingId;
     if (id == null) return;
@@ -472,6 +534,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final draft = _draft;
     final screenPosition = _draftScreenPosition;
     if (draft == null || screenPosition == null) return;
+    // Editing an OpenStreetMap-sourced camera only allows correcting its
+    // limit/direction (see _saveOsmEdit) — its position is OSM's, not ours
+    // to move.
+    if (draft.existingSource == SpeedCameraSource.openstreetmap) return;
     final delta = _screenDeltaToLatLngDelta(
       details.delta,
       draft.position.latitude,
@@ -502,14 +568,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     setState(() => _draft = draft.copyWith(direction: newDirection));
   }
 
-  void _onMarkerTap(SpeedCamera camera) {
+  Future<void> _onMarkerTap(SpeedCamera camera) async {
     final uid = ref.read(authStateProvider).value?.uid;
     final isOwner = uid != null && camera.createdBy == uid;
     if (isOwner) {
-      _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
-    } else {
-      _showReadOnlyDetails(camera);
+      await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+      return;
     }
+    // Cameras with a live OpenStreetMap node (Overpass-imported, or a user
+    // report already published) can have their maxspeed/direction corrected
+    // directly on OSM once the user is signed in (features.md 4).
+    if (camera.osmId != null && await OsmAuthService().isLinked()) {
+      if (!mounted) return;
+      await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+      return;
+    }
+    if (mounted) await _showReadOnlyDetails(camera);
   }
 
   Future<void> _showReadOnlyDetails(SpeedCamera camera) {

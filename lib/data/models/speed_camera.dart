@@ -73,6 +73,17 @@ class SpeedCamera {
   final int? osmNodeId;
   final int? osmNodeVersion;
 
+  /// The live OpenStreetMap node id backing this camera, if any — either an
+  /// Overpass-imported node (`source: 'openstreetmap'`, id `osm_<nodeId>`,
+  /// see `OverpassService`) or a user report already published to OSM
+  /// ([osmNodeId] set). Used to offer editing the node's
+  /// `maxspeed`/`direction` tags directly (features.md 4).
+  int? get osmId {
+    if (osmNodeId != null) return osmNodeId;
+    if (id.startsWith('osm_')) return int.tryParse(id.substring(4));
+    return null;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'lat': lat,

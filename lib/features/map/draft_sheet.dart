@@ -14,6 +14,7 @@ class DraftSheet extends StatefulWidget {
     this.onDelete,
     this.onApprove,
     this.onPublishToOsm,
+    this.onSaveOsmEdit,
   });
 
   final int initialLimit;
@@ -29,6 +30,12 @@ class DraftSheet extends StatefulWidget {
   /// linked (features.md 4) — takes the currently selected limit, like
   /// [onSave].
   final ValueChanged<int>? onPublishToOsm;
+
+  /// Non-null when editing a camera that already has a live OpenStreetMap
+  /// node (features.md 4) — takes the currently selected limit, like
+  /// [onSave], and replaces the generic "Salva" action since there is no
+  /// separate local save step: saving here means writing straight to OSM.
+  final ValueChanged<int>? onSaveOsmEdit;
 
   @override
   State<DraftSheet> createState() => _DraftSheetState();
@@ -84,8 +91,12 @@ class _DraftSheetState extends State<DraftSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => widget.onSave(_limit),
-                    child: const Text('Salva'),
+                    onPressed: () => widget.onSaveOsmEdit != null
+                        ? widget.onSaveOsmEdit!(_limit)
+                        : widget.onSave(_limit),
+                    child: Text(
+                      widget.onSaveOsmEdit != null ? 'Salva su OpenStreetMap' : 'Salva',
+                    ),
                   ),
                 ),
               ],

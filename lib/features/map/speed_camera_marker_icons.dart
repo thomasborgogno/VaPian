@@ -21,7 +21,7 @@ class SpeedCameraMarkerIcons {
 
   static const double circleRadius = 9;
   static const double radarRadius = 40;
-  static const double radarSweepDegrees = 30;
+  static const double radarSweepDegrees = 36;
   static const double _renderScale = 3;
 
   static final double _radarHalfSweepRad = radarSweepDegrees / 2 * pi / 180;
