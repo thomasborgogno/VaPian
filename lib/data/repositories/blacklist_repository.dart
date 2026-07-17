@@ -42,6 +42,17 @@ class BlacklistRepository {
           .doc(uid)
           .collection(FirestorePaths.queuedIgnores);
 
+  /// Queues an "Ignora" tapped while driving (Android Auto, or the phone's
+  /// own navigation mode) for later phone-side confirmation, instead of
+  /// blacklisting it immediately (features.md 3.3.1) — surfaces in
+  /// [watchQueuedIgnores]/`PendingReviewSheet` until [confirmQueuedIgnore] or
+  /// [dismissQueuedIgnore] resolves it.
+  Future<void> queueIgnore(String uid, String cameraId) {
+    return _queuedIgnoresCollection(uid)
+        .doc(cameraId)
+        .set(QueuedIgnore(cameraId: cameraId, queuedAt: DateTime.now()).toMap());
+  }
+
   /// Cameras tapped "Ignora" from Android Auto, awaiting phone-side
   /// confirmation (features.md 3.3.1).
   Stream<List<QueuedIgnore>> watchQueuedIgnores(String uid) {

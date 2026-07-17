@@ -9,6 +9,8 @@
          and the car-app proximity alerts silently fail to show (the foreground
          service itself keeps running). Requested at runtime in MainActivity. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Keeps the screen on during the phone-side navigation mode (wakelock_plus). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- Declares this a car app; required=false so the phone-only install still works. -->
     <uses-feature android:name="android.hardware.type.automotive" android:required="false"/>

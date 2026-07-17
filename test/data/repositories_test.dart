@@ -211,5 +211,38 @@ void main() {
 
       expect(ignored, isEmpty);
     });
+
+    test('queueIgnore then watchQueuedIgnores includes it', () async {
+      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
+
+      await repository.queueIgnore('uid1', 'cam1');
+      final queued = await repository.watchQueuedIgnores('uid1').first;
+
+      expect(queued.map((q) => q.cameraId), contains('cam1'));
+    });
+
+    test('confirmQueuedIgnore blacklists it and clears the queue', () async {
+      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
+
+      await repository.queueIgnore('uid1', 'cam1');
+      await repository.confirmQueuedIgnore('uid1', 'cam1');
+
+      final ignored = await repository.watchIgnoredCameras('uid1').first;
+      final queued = await repository.watchQueuedIgnores('uid1').first;
+      expect(ignored.map((c) => c.cameraId), contains('cam1'));
+      expect(queued, isEmpty);
+    });
+
+    test('dismissQueuedIgnore clears the queue without blacklisting', () async {
+      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
+
+      await repository.queueIgnore('uid1', 'cam1');
+      await repository.dismissQueuedIgnore('uid1', 'cam1');
+
+      final ignored = await repository.watchIgnoredCameras('uid1').first;
+      final queued = await repository.watchQueuedIgnores('uid1').first;
+      expect(ignored, isEmpty);
+      expect(queued, isEmpty);
+    });
   });
 }

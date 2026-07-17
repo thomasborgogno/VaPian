@@ -38,4 +38,26 @@ class MapStyleConfig {
   /// Custom JSON style from https://mapstyle.withgoogle.com/ — null keeps
   /// the default Google Maps look.
   static const String? styleJson = null;
+
+  /// Pure-black "AMOLED" style for the navigation mode's dark map variant —
+  /// grey/white roads and labels on a black background, everything else
+  /// (POIs, transit) hidden to keep it a minimal, glare-free driving view.
+  static const String amoledMapStyleJson = '''
+[
+  {"elementType": "geometry", "stylers": [{"color": "#000000"}]},
+  {"elementType": "labels.icon", "stylers": [{"visibility": "off"}]},
+  {"elementType": "labels.text.fill", "stylers": [{"color": "#8a8a8a"}]},
+  {"elementType": "labels.text.stroke", "stylers": [{"color": "#000000"}]},
+  {"featureType": "administrative", "elementType": "geometry", "stylers": [{"color": "#1a1a1a"}]},
+  {"featureType": "poi", "stylers": [{"visibility": "off"}]},
+  {"featureType": "landscape.man_made", "stylers": [{"visibility": "off"}]},
+  {"featureType": "road", "elementType": "geometry", "stylers": [{"color": "#2a2a2a"}]},
+  {"featureType": "road", "elementType": "geometry.stroke", "stylers": [{"color": "#0f0f0f"}]},
+  {"featureType": "road", "elementType": "labels.text.fill", "stylers": [{"color": "#c8c8c8"}]},
+  {"featureType": "road.highway", "elementType": "geometry", "stylers": [{"color": "#4a4a4a"}]},
+  {"featureType": "road.highway", "elementType": "labels.text.fill", "stylers": [{"color": "#ffffff"}]},
+  {"featureType": "transit", "stylers": [{"visibility": "off"}]},
+  {"featureType": "water", "elementType": "geometry", "stylers": [{"color": "#000000"}]}
+]
+''';
 }

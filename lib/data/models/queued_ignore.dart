@@ -19,4 +19,10 @@ class QueuedIgnore {
 
   final String cameraId;
   final DateTime? queuedAt;
+
+  Map<String, dynamic> toMap() {
+    return {
+      if (queuedAt != null) 'queuedAt': Timestamp.fromDate(queuedAt!),
+    };
+  }
 }

@@ -12,6 +12,7 @@ import '../../data/models/user_settings.dart';
 import '../../data/providers.dart';
 import '../../data/services/osm_auth_service.dart';
 import '../../data/services/osm_edit_service.dart';
+import '../navigation/navigation_screen.dart';
 import '../settings/settings_screen.dart';
 import 'camera_details_sheet.dart';
 import 'camera_draft.dart';
@@ -653,6 +654,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     await _startDraft(position: center);
   }
 
+  void _onNavigationModePressed() {
+    if (_draft != null) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (context) => const NavigationScreen()));
+  }
+
   void _showFilterSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -816,10 +822,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ],
       ),
       floatingActionButton: draft == null
-          ? FloatingActionButton(
-              onPressed: _onFabPressed,
-              tooltip: 'Segnala autovelox',
-              child: const Icon(Icons.add),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'addCameraFab',
+                  onPressed: _onFabPressed,
+                  tooltip: 'Segnala autovelox',
+                  child: const Icon(Icons.add),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton(
+                  heroTag: 'navigationModeFab',
+                  onPressed: _onNavigationModePressed,
+                  tooltip: 'Modalità di navigazione',
+                  child: const Icon(Icons.navigation),
+                ),
+              ],
             )
           : null,
     );
