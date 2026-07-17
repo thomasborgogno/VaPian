@@ -16,12 +16,18 @@ class DraftOverlay extends StatelessWidget {
     super.key,
     required this.draft,
     required this.markerPosition,
+    required this.bearing,
     required this.onMarkerPanUpdate,
     required this.onHandlePanUpdate,
   });
 
   final CameraDraft draft;
   final Offset markerPosition;
+
+  /// Current map camera bearing (degrees clockwise from north) — needed to
+  /// convert `draft.direction`, a compass bearing, into a screen-space angle
+  /// now that the map can be rotated with two fingers.
+  final double bearing;
   final GestureDragUpdateCallback onMarkerPanUpdate;
   final GestureDragUpdateCallback onHandlePanUpdate;
 
@@ -34,9 +40,13 @@ class DraftOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Opposite the direction of travel, so the handle sits on the same side
-    // as the radar cone (see SpeedCameraMarkerIcons).
-    final theta = draft.direction * pi / 180 + pi;
+    // Screen-space heading of the handle: opposite the direction of travel
+    // (so it sits on the same side as the radar cone, see
+    // SpeedCameraMarkerIcons), then corrected for the map's own rotation —
+    // draft.direction is a compass bearing, but screen "up" only means
+    // "north" when bearing is 0.
+    final screenDirection = draft.direction - bearing;
+    final theta = screenDirection * pi / 180 + pi;
     final handlePosition =
         markerPosition +
         Offset(handleDistancePx * sin(theta), -handleDistancePx * cos(theta));
@@ -56,7 +66,7 @@ class DraftOverlay extends StatelessWidget {
               child: CustomPaint(
                 painter: DraftMarkerPainter(
                   color: speedCameraOrange,
-                  rotationDegrees: draft.direction,
+                  rotationDegrees: screenDirection,
                 ),
               ),
             ),

@@ -59,6 +59,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Offset? _draftScreenPosition;
   PersistentBottomSheetController? _sheetController;
   double _currentZoom = 14;
+  double _currentBearing = 0;
   bool _syncReminderDismissed = false;
 
   List<SpeedCamera> _allCameras = [];
@@ -119,6 +120,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
       anchor: SpeedCameraMarkerIcons.anchor,
       rotation: camera.direction?.toDouble() ?? 0,
+      // Without `flat`, a Marker's rotation is a screen-space billboard
+      // rotation and ignores the map's own bearing — the radar cone would
+      // stay screen-up-fixed while the two-finger-rotated map turned under
+      // it. `flat` glues it to the ground plane so `rotation` behaves as
+      // the true-north compass bearing it's meant to be.
+      flat: true,
       onTap: () => _onMarkerTap(camera),
     );
   }
@@ -203,7 +210,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _rebuildMarkers();
     }
     if (_draft != null) {
+      // Rebuild so the draft overlay (marker glyph + rotate handle) picks up
+      // the new bearing — it draws in screen space, so a two-finger map
+      // rotation changes where it needs to sit even though the draft's own
+      // lat/lng/direction haven't changed.
+      setState(() => _currentBearing = position.bearing);
       _syncDraftScreenPosition();
+    } else {
+      _currentBearing = position.bearing;
     }
   }
 
@@ -513,7 +527,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// Converts a screen-space drag delta into a lat/lng delta using the
   /// current zoom's Web Mercator ground resolution — synchronous, so
-  /// dragging never waits on the platform view.
+  /// dragging never waits on the platform view. Also rotates the delta by
+  /// the current camera bearing first: with two-finger map rotation
+  /// enabled, screen "up" is only "north" when bearing is 0.
   ({double dLat, double dLng}) _screenDeltaToLatLngDelta(
     Offset delta,
     double atLatitude,
@@ -522,8 +538,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _groundResolutionAtZoom0 *
         cos(atLatitude * pi / 180) /
         pow(2, _currentZoom);
-    final groundDx = delta.dx * metersPerPixel;
-    final groundDy = delta.dy * metersPerPixel;
+    final bearingRad = _currentBearing * pi / 180;
+    final eastPixels = delta.dx * cos(bearingRad) - delta.dy * sin(bearingRad);
+    final southPixels = delta.dx * sin(bearingRad) + delta.dy * cos(bearingRad);
+    final groundDx = eastPixels * metersPerPixel;
+    final groundDy = southPixels * metersPerPixel;
     final dLat = -groundDy / _metersPerDegreeLatitude;
     final dLng =
         groundDx / (_metersPerDegreeLatitude * cos(atLatitude * pi / 180));
@@ -557,8 +576,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final draft = _draft;
     if (draft == null) return;
     // The handle sits opposite the travel direction (see DraftOverlay), so
-    // its screen angle is offset by 180° from draft.direction.
-    final thetaRad = draft.direction * pi / 180 + pi;
+    // its screen angle is offset by 180° from draft.direction — then
+    // corrected for the map's own rotation, same as DraftOverlay's build().
+    final thetaRad = (draft.direction - _currentBearing) * pi / 180 + pi;
     // Tangential component of the drag, perpendicular to the current
     // handle direction, turned into an angle change around the marker.
     final tangential =
@@ -755,6 +775,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             DraftOverlay(
               draft: draft,
               markerPosition: _draftScreenPosition!,
+              bearing: _currentBearing,
               onMarkerPanUpdate: _onMarkerPanUpdate,
               onHandlePanUpdate: _onHandlePanUpdate,
             ),

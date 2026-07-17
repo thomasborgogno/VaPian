@@ -29,10 +29,10 @@ class MapStyleConfig {
   static const bool myLocationEnabled = true;
   static const bool myLocationButtonEnabled = true;
 
-  /// Kept off: the draft-marker drag math (map_screen.dart) assumes the map
-  /// stays north-up. Re-enabling requires factoring the camera bearing into
-  /// that math too.
-  static const bool rotateGesturesEnabled = false;
+  /// Two-finger map rotation — the draft-marker/handle drag math
+  /// (map_screen.dart, draft_overlay.dart) factors in the current camera
+  /// bearing, so it stays correct even while the map isn't north-up.
+  static const bool rotateGesturesEnabled = true;
   static const bool tiltGesturesEnabled = false;
 
   /// Custom JSON style from https://mapstyle.withgoogle.com/ — null keeps
