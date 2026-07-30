@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/speed_camera.dart';
 import 'driving_alert_state.dart';
+import 'navigation_theme.dart';
 
 /// Overlay shared by all 3 navigation-mode views: the proximity alert card
 /// (when a camera is within range) plus the action button row — "Ignora
@@ -15,6 +16,7 @@ class NavigationAlertCard extends StatelessWidget {
     required this.onIgnore,
     required this.onCycleView,
     required this.onExit,
+    required this.colors,
   });
 
   final DrivingAlertState state;
@@ -22,6 +24,7 @@ class NavigationAlertCard extends StatelessWidget {
   final VoidCallback onIgnore;
   final VoidCallback onCycleView;
   final VoidCallback onExit;
+  final NavigationButtonColors colors;
 
   @override
   Widget build(BuildContext context) {
@@ -35,12 +38,18 @@ class NavigationAlertCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _RoundIconButton(icon: Icons.arrow_back, tooltip: 'Esci', onPressed: onExit),
+                _RoundIconButton(
+                  icon: Icons.arrow_back,
+                  tooltip: 'Esci',
+                  onPressed: onExit,
+                  colors: colors,
+                ),
                 const Spacer(),
                 _RoundIconButton(
                   icon: Icons.swap_horiz,
                   tooltip: 'Cambia vista',
                   onPressed: onCycleView,
+                  colors: colors,
                 ),
               ],
             ),
@@ -53,6 +62,10 @@ class NavigationAlertCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.filledBackground,
+                      foregroundColor: colors.filledForeground,
+                    ),
                     onPressed: onReport,
                     icon: const Icon(Icons.add_a_photo_outlined),
                     label: const Text('Segnala Velox'),
@@ -62,6 +75,10 @@ class NavigationAlertCard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.outlinedForeground,
+                        side: BorderSide(color: colors.outlinedBorder),
+                      ),
                       onPressed: onIgnore,
                       icon: const Icon(Icons.visibility_off_outlined),
                       label: const Text('Ignora Velox'),
@@ -122,18 +139,28 @@ class _AlertCard extends StatelessWidget {
 }
 
 class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.tooltip, required this.onPressed});
+  const _RoundIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    required this.colors,
+  });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
+  final NavigationButtonColors colors;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Theme.of(context).colorScheme.surface.withAlpha(230),
+      color: colors.roundIconBackground.withAlpha(230),
       shape: const CircleBorder(),
-      child: IconButton(icon: Icon(icon), tooltip: tooltip, onPressed: onPressed),
+      child: IconButton(
+        icon: Icon(icon, color: colors.roundIconForeground),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
     );
   }
 }

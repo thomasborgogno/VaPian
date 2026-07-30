@@ -10,6 +10,7 @@ import 'navigation_alert_card.dart';
 import 'navigation_alert_controller.dart';
 import 'navigation_map_view.dart';
 import 'navigation_speed_view.dart';
+import 'navigation_theme.dart';
 
 enum _NavigationVariant {
   map,
@@ -80,6 +81,11 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
     super.dispose();
   }
 
+  NavigationButtonColors get _buttonColors => switch (_variant) {
+        _NavigationVariant.map => NavigationButtonColors.light,
+        _NavigationVariant.amoled || _NavigationVariant.speed => NavigationButtonColors.dark,
+      };
+
   void _cycleView() {
     final next = _NavigationVariant.values[(_variant.index + 1) % _NavigationVariant.values.length];
     setState(() => _variant = next);
@@ -133,6 +139,7 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
                   onIgnore: _ignore,
                   onCycleView: _cycleView,
                   onExit: () => Navigator.of(context).pop(),
+                  colors: _buttonColors,
                 ),
               ],
             ),
