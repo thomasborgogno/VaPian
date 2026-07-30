@@ -74,6 +74,22 @@ class SpeedCameraRepository {
     return controller.stream;
   }
 
+  /// One-shot cache warm-up, not used for live matching: pulls camera docs
+  /// for the 9-cell coverage of [radiusMeters] into Firestore's local
+  /// persistence, so they're still available if connectivity drops later
+  /// along the route. Fire-and-forget — callers don't need the result, only
+  /// the side effect of populating the offline cache while online.
+  Future<void> prefetchNear(double lat, double lng, double radiusMeters) async {
+    final prefixes = geohashNeighborPrefixes(lat, lng, radiusMeters);
+    await Future.wait([
+      for (final prefix in prefixes)
+        _collection
+            .where('geohash', isGreaterThanOrEqualTo: prefix)
+            .where('geohash', isLessThanOrEqualTo: prefix)
+            .get(),
+    ]);
+  }
+
   Future<String> addCamera(SpeedCamera camera) async {
     final now = DateTime.now();
     final data = camera

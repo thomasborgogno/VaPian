@@ -36,6 +36,12 @@ class NavigationAlertController extends ChangeNotifier {
   static const double _requeryThresholdMeters = 500;
   static const int _locationIntervalMs = 2000;
 
+  /// Wider than [_searchRadiusMeters] on purpose: this only warms up
+  /// Firestore's local persistence a few km ahead/around while online, it
+  /// never feeds the live matching path, so it can be generous without
+  /// affecting alert precision/reactivity.
+  static const double _prefetchRadiusMeters = 8000;
+
   /// Below this speed, the GPS course has no reliable movement vector to
   /// derive from — hold the last known heading instead of following the
   /// raw, noisy `data.heading` while stopped (e.g. at a red light).
@@ -137,6 +143,7 @@ class NavigationAlertController extends ChangeNotifier {
     _camerasSub = _cameraRepository.watchNear(lat, lng, _searchRadiusMeters).listen((cameras) {
       _nearbyCameras = cameras;
     });
+    unawaited(_cameraRepository.prefetchNear(lat, lng, _prefetchRadiusMeters));
   }
 
   SpeedCamera? _pickCandidate(double lat, double lng, double headingDeg) {
