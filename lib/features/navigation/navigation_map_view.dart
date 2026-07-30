@@ -31,6 +31,13 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   /// this is effectively "as inclined as possible" for maximum forward view.
   static const double _navigationTiltDeg = 67.5;
 
+  /// Fraction of the screen height treated as top "padding" for `GoogleMap`.
+  /// `GoogleMap.padding` insets the area the SDK centers the camera target
+  /// within, so top padding pushes that centered point — the my-location
+  /// dot standing in for the car — down towards the bottom of the screen,
+  /// leaving more room above to see the road ahead.
+  static const double _topPaddingFraction = 0.45;
+
   GoogleMapController? _mapController;
   Set<Marker> _cameraMarkers = {};
 
@@ -119,7 +126,10 @@ class _NavigationMapViewState extends State<NavigationMapView> {
       initialCameraPosition: CameraPosition(
         target: LatLng(lat, lng),
         zoom: 17,
-        tilt: 45,
+        tilt: _navigationTiltDeg,
+      ),
+      padding: EdgeInsets.only(
+        top: MediaQuery.sizeOf(context).height * _topPaddingFraction,
       ),
       markers: _cameraMarkers,
       mapType: MapType.normal,
