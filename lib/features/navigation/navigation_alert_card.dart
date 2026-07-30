@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/utils/device_form_factor.dart';
 import '../../data/models/speed_camera.dart';
 import 'driving_alert_state.dart';
 import 'navigation_theme.dart';
@@ -30,6 +31,14 @@ class NavigationAlertCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final camera = state.camera;
     final canIgnore = camera != null && camera.source == SpeedCameraSource.openstreetmap;
+    // Bigger, easier-to-hit targets on tablets — the expected in-car mount,
+    // glanced at rather than looked at closely while driving.
+    final isTablet = isTabletFormFactor(context);
+    final buttonPadding = isTablet
+        ? const EdgeInsets.symmetric(horizontal: 32, vertical: 24)
+        : const EdgeInsets.symmetric(horizontal: 20, vertical: 14);
+    final buttonTextStyle = TextStyle(fontSize: isTablet ? 20 : 14);
+    final buttonIconSize = isTablet ? 32.0 : 24.0;
 
     return SafeArea(
       child: Padding(
@@ -58,34 +67,39 @@ class NavigationAlertCard extends StatelessWidget {
               _AlertCard(camera: camera, distanceMeters: state.distanceMeters, overLimit: state.overLimit),
             ],
             const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
+            Align(
+              alignment: Alignment.bottomLeft,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FilledButton.icon(
                     style: FilledButton.styleFrom(
                       backgroundColor: colors.filledBackground,
                       foregroundColor: colors.filledForeground,
+                      padding: buttonPadding,
+                      textStyle: buttonTextStyle,
                     ),
                     onPressed: onReport,
-                    icon: const Icon(Icons.add_a_photo_outlined),
+                    icon: Icon(Icons.add_a_photo_outlined, size: buttonIconSize),
                     label: const Text('Segnala Velox'),
                   ),
-                ),
-                if (canIgnore) ...[
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
+                  if (canIgnore) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: colors.outlinedForeground,
                         side: BorderSide(color: colors.outlinedBorder),
+                        padding: buttonPadding,
+                        textStyle: buttonTextStyle,
                       ),
                       onPressed: onIgnore,
-                      icon: const Icon(Icons.visibility_off_outlined),
+                      icon: Icon(Icons.visibility_off_outlined, size: buttonIconSize),
                       label: const Text('Ignora Velox'),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ),
