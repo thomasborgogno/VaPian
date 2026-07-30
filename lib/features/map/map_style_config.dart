@@ -35,9 +35,15 @@ class MapStyleConfig {
   static const bool rotateGesturesEnabled = true;
   static const bool tiltGesturesEnabled = false;
 
-  /// Custom JSON style from https://mapstyle.withgoogle.com/ — null keeps
+  /// Custom JSON style from https://mapstyle.withgoogle.com/ — hides
+  /// Google's own point-of-interest markers/labels so the only pins on the
+  /// map are speed cameras; everything else (roads, water, labels) keeps
   /// the default Google Maps look.
-  static const String? styleJson = null;
+  static const String styleJson = '''
+[
+  {"featureType": "poi", "elementType": "labels", "stylers": [{"visibility": "off"}]}
+]
+''';
 
   /// Pure-black "AMOLED" style for the navigation mode's dark map variant —
   /// grey/white roads and labels on a black background, everything else

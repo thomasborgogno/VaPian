@@ -7,9 +7,14 @@ import '../../data/providers.dart';
 /// Bottom sheet listing all pending own cameras so the user can approve,
 /// edit, or delete them (features.md 2.1 "Banner di Conferma Android Auto").
 class PendingReviewSheet extends ConsumerWidget {
-  const PendingReviewSheet({super.key, required this.onEdit});
+  const PendingReviewSheet({super.key, required this.onEdit, required this.onCenter});
 
   final void Function(SpeedCamera) onEdit;
+
+  /// Tapping a row (not its trailing action icons) re-centers the map on
+  /// that camera without closing the sheet, so the user can see where it
+  /// actually is before deciding what to do with it.
+  final void Function(SpeedCamera) onCenter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,13 +22,14 @@ class PendingReviewSheet extends ConsumerWidget {
     final queuedIgnores = ref.watch(queuedIgnoresProvider).value ?? [];
     final uid = ref.watch(authStateProvider).value?.uid;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.5,
-      maxChildSize: 0.9,
-      minChildSize: 0.3,
-      expand: false,
-      builder: (_, scrollController) => SafeArea(
+    // Sized to content (up to 90% of the screen) rather than a fixed
+    // fraction, so a short list doesn't eat half the screen — it only
+    // becomes scrollable once the content actually overflows that cap.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.9),
+      child: SafeArea(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -37,12 +43,13 @@ class PendingReviewSheet extends ConsumerWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
             ),
-            Expanded(
+            Flexible(
               child: ListView(
-                controller: scrollController,
+                shrinkWrap: true,
                 children: [
                   for (final camera in cameras)
                     ListTile(
+                      onTap: () => onCenter(camera),
                       leading: const Icon(Icons.speed),
                       title: Text(
                         camera.limit != null ? '${camera.limit} km/h' : 'Limite sconosciuto',

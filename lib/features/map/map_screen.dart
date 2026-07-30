@@ -827,6 +827,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             existing: camera,
           );
         },
+        onCenter: (camera) {
+          _controller?.animateCamera(
+            CameraUpdate.newLatLng(LatLng(camera.lat, camera.lng)),
+          );
+        },
       ),
     );
   }
