@@ -30,6 +30,14 @@
           }
         },
         {
+          "client_id": "105468480792-c81niskg9gr380kpl02qr0mgu595ist3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bortho.autovelox",
+            "certificate_hash": "ace18a1a3817e52ae6b6915bc3e657bf590c1770"
+          }
+        },
+        {
           "client_id": "105468480792-m7ddss7mlifs3r3i343h3gbqipspnpe6.apps.googleusercontent.com",
           "client_type": 3
         }

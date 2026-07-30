@@ -17,6 +17,20 @@ val localProperties = Properties().apply {
 }
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
 
+// Release signing — never committed (android/.gitignore ignores key.properties
+// and *.p12/*.jks). Populated locally by pointing storeFile at your own
+// keystore, or in CI by writing this file + decoding the keystore from a
+// secret before the build (see .github/workflows/release.yml). Falls back to
+// debug signing when absent, so `flutter build apk --release` still works
+// without it (just not installable as an update over a real release build).
+val keystoreProperties = Properties().apply {
+    val keystorePropertiesFile = rootProject.file("key.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseSigning = keystoreProperties.containsKey("storeFile")
+
 android {
     namespace = "com.bortho.autovelox"
     compileSdk = flutter.compileSdkVersion
@@ -44,11 +58,27 @@ android {
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeType = keystoreProperties.getProperty("storeType") ?: "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                // No key.properties on this machine — fall back to the debug
+                // key so `flutter build/run --release` still works locally.
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
