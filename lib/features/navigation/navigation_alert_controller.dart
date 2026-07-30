@@ -36,6 +36,11 @@ class NavigationAlertController extends ChangeNotifier {
   static const double _requeryThresholdMeters = 500;
   static const int _locationIntervalMs = 2000;
 
+  /// Below this speed, the GPS course has no reliable movement vector to
+  /// derive from — hold the last known heading instead of following the
+  /// raw, noisy `data.heading` while stopped (e.g. at a red light).
+  static const double _minHeadingSpeedKmh = 5.0;
+
   final SpeedCameraRepository _cameraRepository;
   final BlacklistRepository _blacklistRepository;
   final NavigationTtsService _tts;
@@ -109,7 +114,9 @@ class NavigationAlertController extends ChangeNotifier {
     _currentLat = lat;
     _currentLng = lng;
     final speedKmh = (data.speed ?? 0) * 3.6;
-    final headingDeg = data.heading ?? _state.headingDeg;
+    final headingDeg = speedKmh >= _minHeadingSpeedKmh
+        ? (data.heading ?? _state.headingDeg)
+        : _state.headingDeg;
 
     _maybeRequeryCameras(lat, lng);
     final candidate = _pickCandidate(lat, lng, headingDeg);
