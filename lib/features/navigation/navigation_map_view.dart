@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../core/utils/geo.dart';
 import '../map/map_style_config.dart';
 import '../map/map_viewport.dart';
 import '../map/marker_style.dart';
@@ -38,38 +41,80 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   /// leaving more room above to see the road ahead.
   static const double _topPaddingFraction = 0.45;
 
+  /// How often the camera is nudged forward between real GPS fixes (which
+  /// only arrive every 2s) — frequent enough that the motion reads as
+  /// continuous rather than a hitch-then-jump every fix.
+  static const Duration _extrapolationTick = Duration(milliseconds: 100);
+
+  /// Below this speed, don't extrapolate at all — matches the controller's
+  /// own stationary-heading threshold, so a stopped car doesn't drift.
+  static const double _minExtrapolationSpeedKmh = 3.0;
+
   GoogleMapController? _mapController;
   Set<Marker> _cameraMarkers = {};
+  Timer? _extrapolationTimer;
+
+  double? _fixLat;
+  double? _fixLng;
+  DateTime? _fixAt;
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onControllerChanged);
     _rebuildCameraMarker();
+    _extrapolationTimer = Timer.periodic(_extrapolationTick, (_) => _followUser());
   }
 
   @override
   void dispose() {
+    _extrapolationTimer?.cancel();
     widget.controller.removeListener(_onControllerChanged);
     super.dispose();
   }
 
   void _onControllerChanged() {
+    final lat = widget.controller.currentLat;
+    final lng = widget.controller.currentLng;
+    if (lat != null && lng != null) {
+      _fixLat = lat;
+      _fixLng = lng;
+      _fixAt = DateTime.now();
+    }
     _followUser();
     _rebuildCameraMarker();
   }
 
+  /// Between GPS fixes, dead-reckons the displayed position forward from the
+  /// last real fix using current speed/heading, instead of leaving the
+  /// camera frozen until the next fix arrives 2s later. `moveCamera` (not
+  /// `animateCamera`) is used here since this runs on a short, frequent
+  /// tick — many small instant steps already read as smooth motion, and
+  /// chaining eased animations at this rate would fight itself.
   Future<void> _followUser() async {
     final map = _mapController;
-    final lat = widget.controller.currentLat;
-    final lng = widget.controller.currentLng;
-    if (map == null || lat == null || lng == null) return;
-    await map.animateCamera(
+    final fixLat = _fixLat;
+    final fixLng = _fixLng;
+    final fixAt = _fixAt;
+    if (map == null || fixLat == null || fixLng == null || fixAt == null) return;
+
+    final state = widget.controller.state;
+    var lat = fixLat;
+    var lng = fixLng;
+    if (state.speedKmh >= _minExtrapolationSpeedKmh) {
+      final elapsedSeconds = DateTime.now().difference(fixAt).inMilliseconds / 1000;
+      final distanceMeters = (state.speedKmh / 3.6) * elapsedSeconds;
+      final projected = destinationPoint(fixLat, fixLng, state.headingDeg, distanceMeters);
+      lat = projected.lat;
+      lng = projected.lng;
+    }
+
+    await map.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
           target: LatLng(lat, lng),
           zoom: 17,
-          bearing: widget.controller.state.headingDeg,
+          bearing: state.headingDeg,
           tilt: _navigationTiltDeg,
         ),
       ),
