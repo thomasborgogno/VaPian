@@ -1,14 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../data/providers.dart';
+import '../../data/repositories/navigation_prefs_repository.dart';
 import 'navigation_alert_card.dart';
 import 'navigation_alert_controller.dart';
 import 'navigation_map_view.dart';
 import 'navigation_speed_view.dart';
 
-enum _NavigationVariant { map, amoled, speed }
+enum _NavigationVariant {
+  map,
+  amoled,
+  speed;
+
+  static _NavigationVariant fromName(String? name) =>
+      values.firstWhere((v) => v.name == name, orElse: () => _NavigationVariant.map);
+}
 
 /// Full-screen phone-side "modalità di navigazione": GPS proximity alerts
 /// (TTS + visual card) plus the quick "Segnala"/"Ignora" actions, in one of
@@ -23,6 +33,7 @@ class NavigationScreen extends ConsumerStatefulWidget {
 
 class _NavigationScreenState extends ConsumerState<NavigationScreen> {
   late final NavigationAlertController _controller;
+  late final NavigationPrefsRepository _prefsRepo;
   _NavigationVariant _variant = _NavigationVariant.map;
   bool _starting = true;
 
@@ -33,9 +44,17 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
       cameraRepository: ref.read(speedCameraRepositoryProvider),
       blacklistRepository: ref.read(blacklistRepositoryProvider),
     );
+    _prefsRepo = ref.read(navigationPrefsRepositoryProvider);
     _controller.addListener(_onControllerChanged);
     WakelockPlus.enable();
+    _loadVariant();
     _start();
+  }
+
+  Future<void> _loadVariant() async {
+    final saved = await _prefsRepo.readVariant();
+    if (!mounted) return;
+    setState(() => _variant = _NavigationVariant.fromName(saved));
   }
 
   Future<void> _start() async {
@@ -62,10 +81,9 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
   }
 
   void _cycleView() {
-    setState(() {
-      _variant =
-          _NavigationVariant.values[(_variant.index + 1) % _NavigationVariant.values.length];
-    });
+    final next = _NavigationVariant.values[(_variant.index + 1) % _NavigationVariant.values.length];
+    setState(() => _variant = next);
+    unawaited(_prefsRepo.writeVariant(next.name));
   }
 
   Future<void> _report() async {

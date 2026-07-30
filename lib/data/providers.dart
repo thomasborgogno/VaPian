@@ -7,6 +7,7 @@ import 'models/speed_camera.dart';
 import 'models/sync_metadata.dart';
 import 'models/user_settings.dart';
 import 'repositories/blacklist_repository.dart';
+import 'repositories/navigation_prefs_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/speed_camera_repository.dart';
 import 'services/auth_service.dart';
@@ -31,6 +32,10 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
 
 final blacklistRepositoryProvider = Provider<BlacklistRepository>((ref) {
   return BlacklistRepository(firestore: ref.watch(firestoreProvider));
+});
+
+final navigationPrefsRepositoryProvider = Provider<NavigationPrefsRepository>((ref) {
+  return NavigationPrefsRepository();
 });
 
 final userSettingsProvider = StreamProvider<UserSettings>((ref) {
