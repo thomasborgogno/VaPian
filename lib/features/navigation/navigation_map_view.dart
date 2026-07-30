@@ -26,6 +26,11 @@ class NavigationMapView extends StatefulWidget {
 }
 
 class _NavigationMapViewState extends State<NavigationMapView> {
+  /// Highest tilt Google Maps actually renders at the fixed zoom=17 used in
+  /// navigation mode — beyond this the SDK silently clamps it anyway, so
+  /// this is effectively "as inclined as possible" for maximum forward view.
+  static const double _navigationTiltDeg = 67.5;
+
   GoogleMapController? _mapController;
   Set<Marker> _cameraMarkers = {};
 
@@ -58,7 +63,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
           target: LatLng(lat, lng),
           zoom: 17,
           bearing: widget.controller.state.headingDeg,
-          tilt: 45,
+          tilt: _navigationTiltDeg,
         ),
       ),
     );
