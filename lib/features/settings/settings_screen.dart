@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/user_avatar.dart';
 import '../../data/models/user_settings.dart';
 import '../../data/providers.dart';
+import 'offline_maps_section.dart';
 import 'osm_auth_section.dart';
 import 'osm_sync_section.dart';
 
@@ -137,6 +138,12 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
           value: _settings.toleranceFilterEnabled,
           onChanged: (value) =>
               _applyChange((s) => s.copyWith(toleranceFilterEnabled: value)),
+        ),
+        const Divider(height: 32),
+        OfflineMapsSection(
+          selectedRegions: _settings.offlineMapRegions,
+          onRegionsChanged: (regions) =>
+              _applyChange((s) => s.copyWith(offlineMapRegions: regions)),
         ),
         const Divider(height: 32),
         OsmSyncSection(
