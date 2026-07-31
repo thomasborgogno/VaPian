@@ -1,14 +1,16 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart' as loc;
 
+import '../../core/constants/tile_source_config.dart';
 import '../../core/utils/geo.dart';
 import '../../core/widgets/user_avatar.dart';
 import '../../data/models/speed_camera.dart';
-import '../../data/models/user_settings.dart';
 import '../../data/providers.dart';
 import '../../data/services/osm_auth_service.dart';
 import '../../data/services/osm_edit_service.dart';
@@ -17,12 +19,12 @@ import '../settings/settings_screen.dart';
 import 'camera_details_sheet.dart';
 import 'camera_draft.dart';
 import 'camera_filter.dart';
+import 'current_location_marker.dart';
 import 'dot_marker_icons.dart';
 import 'draft_overlay.dart';
 import 'draft_sheet.dart';
 import 'filter_sheet.dart';
 import 'map_style_config.dart';
-import 'map_style_toggle.dart';
 import 'map_viewport.dart';
 import 'marker_style.dart';
 import 'pending_cameras_banner.dart';
@@ -51,7 +53,8 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  GoogleMapController? _controller;
+  final MapController _controller = MapController();
+  StreamSubscription<MapEvent>? _mapEventSubscription;
   LatLng _initialPosition = LatLng(
     MapViewport.initial.latitude,
     MapViewport.initial.longitude,
@@ -62,9 +65,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _currentZoom = 14;
   double _currentBearing = 0;
   bool _syncReminderDismissed = false;
+  LatLng? _myLocation;
+  StreamSubscription<loc.LocationData>? _locationSubscription;
 
   List<SpeedCamera> _allCameras = [];
-  Set<Marker> _markers = {};
+  List<Marker> _markers = [];
   bool _showDots = false;
   CameraFilter _filter = const CameraFilter();
 
@@ -76,16 +81,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void initState() {
     super.initState();
     _resolveInitialPosition();
+    _watchDeviceLocation();
     // Kicks off loading the camera pictogram well before any marker/draft
     // overlay needs to paint it synchronously.
     SpeedCameraMarkerIcons.ensureIconLoaded();
+    _mapEventSubscription = _controller.mapEventStream.listen(_onMapEvent);
   }
 
-  /// Rebuilds every camera marker directly (no clustering) — dots
-  /// below [_dotZoomThreshold], full glyphs above it. Called whenever the
-  /// camera list changes, whenever a draft edit starts/ends, whenever the
-  /// zoom crosses the dot threshold, and whenever the filter changes.
-  Future<void> _rebuildMarkers() async {
+  @override
+  void dispose() {
+    _mapEventSubscription?.cancel();
+    _locationSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Rebuilds every camera marker directly (no clustering) — dots below
+  /// [_dotZoomThreshold], full glyphs above it. Called whenever the camera
+  /// list changes, whenever a draft edit starts/ends, whenever the zoom
+  /// crosses the dot threshold, and whenever the filter changes.
+  void _rebuildMarkers() {
     final ignoredIds = ref.read(ignoredCameraIdsProvider).value ?? {};
     final draft = _draft;
     final showIgnoredOnly = _filter.showIgnoredOnly;
@@ -96,72 +110,65 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         .where((c) => draft == null || c.id != draft.existingId)
         .toList();
 
-    final markerGroups = await Future.wait(
-      cameras.map((c) => _buildMarkersForCamera(c, grayedOut: showIgnoredOnly)),
-    );
-    if (!mounted) return;
-    setState(() => _markers = markerGroups.expand((group) => group).toSet());
+    setState(() {
+      _markers = cameras
+          .expand((c) => _buildMarkersForCamera(c, grayedOut: showIgnoredOnly))
+          .toList();
+    });
   }
 
   /// One camera renders as either a single dot marker (zoomed out), or —
   /// above the dot threshold — two independent markers at the same
-  /// position: an always-upright badge (billboard, never rotated) and,
-  /// only when a direction is known, a separately-rotating arrow. A single
-  /// bitmap + `Marker.rotation` can't rotate only part of itself, so this
-  /// is the only way to keep the badge screen-locked while the arrow
-  /// tracks the true monitored bearing (see `SpeedCameraMarkerIcons`).
-  Future<List<Marker>> _buildMarkersForCamera(
-    SpeedCamera camera, {
-    bool grayedOut = false,
-  }) async {
+  /// position: an always-upright badge (`rotate: true`, counter-rotated
+  /// against the map so it never turns) and, only when a direction is
+  /// known, a separately-rotating arrow (`rotate: false`, so it turns with
+  /// the map — the ground-plane behavior its compass-bearing rotation
+  /// needs). See `SpeedCameraMarkerIcons`'s class doc.
+  List<Marker> _buildMarkersForCamera(SpeedCamera camera, {bool grayedOut = false}) {
     final color = grayedOut ? speedCameraGray : markerColorFor(camera);
+    final position = LatLng(camera.lat, camera.lng);
+
     if (_showDots) {
       return [
         Marker(
-          markerId: MarkerId(camera.id),
-          position: LatLng(camera.lat, camera.lng),
-          icon: await DotMarkerIcons.forColor(color),
+          point: position,
+          rotate: true,
+          width: DotMarker.diameter,
+          height: DotMarker.diameter,
+          child: DotMarker(color: color),
         ),
       ];
     }
 
-    final position = LatLng(camera.lat, camera.lng);
-    final icon = Marker(
-      markerId: MarkerId('${camera.id}_icon'),
-      position: position,
-      icon: await SpeedCameraMarkerIcons.iconForColor(color),
-      anchor: SpeedCameraMarkerIcons.iconAnchor,
-      zIndexInt: 1,
-      onTap: () => _onMarkerTap(camera),
-    );
-
     final travelDirection = camera.monitoredTravelDirectionDeg;
-    if (travelDirection == null) return [icon];
-
-    final arrow = Marker(
-      markerId: MarkerId('${camera.id}_arrow'),
-      position: position,
-      icon: await SpeedCameraMarkerIcons.arrowForColor(color),
-      anchor: SpeedCameraMarkerIcons.arrowAnchor,
-      // The monitored travel direction, not the raw OSM-facing `direction`
-      // tag — they differ when `directionReversed` is set (features.md).
-      rotation: travelDirection.toDouble(),
-      // Without `flat`, a Marker's rotation is a screen-space billboard
-      // rotation and ignores the map's own bearing — the arrow would stay
-      // screen-up-fixed while the two-finger-rotated map turned under it.
-      // `flat` glues it to the ground plane so `rotation` behaves as the
-      // true-north compass bearing it's meant to be. The icon marker above
-      // deliberately has no `flat`/`rotation` — it must stay upright.
-      flat: true,
-    );
-    return [icon, arrow];
+    final markers = <Marker>[
+      if (travelDirection != null)
+        Marker(
+          point: position,
+          alignment: Alignment.topCenter,
+          width: SpeedCameraArrowMarker.width,
+          height: SpeedCameraArrowMarker.height,
+          child: SpeedCameraArrowMarker(color: color, rotationDegrees: travelDirection.toDouble()),
+        ),
+      Marker(
+        point: position,
+        rotate: true,
+        width: SpeedCameraIconMarker.size,
+        height: SpeedCameraIconMarker.size,
+        child: GestureDetector(
+          onTap: () => _onMarkerTap(camera),
+          child: SpeedCameraIconMarker(color: color),
+        ),
+      ),
+    ];
+    return markers;
   }
 
   Future<void> _resolveInitialPosition() async {
     final position = await _currentDevicePosition();
     if (position == null || !mounted) return;
     setState(() => _initialPosition = position);
-    _controller?.animateCamera(CameraUpdate.newLatLng(position));
+    _controller.move(position, _currentZoom);
   }
 
   Future<LatLng?> _currentDevicePosition() async {
@@ -186,20 +193,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<void> _refreshViewport() async {
-    final controller = _controller;
-    if (controller == null) return;
-    final bounds = await controller.getVisibleRegion();
-    final centerLat =
-        (bounds.northeast.latitude + bounds.southwest.latitude) / 2;
-    final centerLng =
-        (bounds.northeast.longitude + bounds.southwest.longitude) / 2;
-    final radiusMeters = haversineDistanceMeters(
-      centerLat,
-      centerLng,
-      bounds.northeast.latitude,
-      bounds.northeast.longitude,
-    );
+  /// Feeds the small "my location" marker (no native blue dot without
+  /// Google Maps) — best-effort: permission/service failures just mean the
+  /// marker never appears, same as before.
+  Future<void> _watchDeviceLocation() async {
+    final location = loc.Location();
+    try {
+      if (!await location.serviceEnabled()) return;
+      var permission = await location.hasPermission();
+      if (permission == loc.PermissionStatus.denied) {
+        permission = await location.requestPermission();
+      }
+      if (permission != loc.PermissionStatus.granted &&
+          permission != loc.PermissionStatus.grantedLimited) {
+        return;
+      }
+      _locationSubscription = location.onLocationChanged.listen((data) {
+        if (!mounted || data.latitude == null || data.longitude == null) return;
+        setState(() => _myLocation = LatLng(data.latitude!, data.longitude!));
+      });
+    } catch (_) {
+      // Best-effort: no marker if location isn't available.
+    }
+  }
+
+  void _refreshViewport() {
+    final bounds = _controller.camera.visibleBounds;
+    final centerLat = (bounds.north + bounds.south) / 2;
+    final centerLng = (bounds.east + bounds.west) / 2;
+    final radiusMeters = haversineDistanceMeters(centerLat, centerLng, bounds.north, bounds.east);
 
     // Skip the re-query if the new center is still well inside the already-
     // prefetched area (prefetch = 3× the visible radius).  We only issue a new
@@ -207,16 +229,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // to less than one visible-radius worth of margin.
     final last = _lastQueriedViewport;
     if (last != null) {
-      final movedMeters = haversineDistanceMeters(
-        last.latitude,
-        last.longitude,
-        centerLat,
-        centerLng,
-      );
+      final movedMeters = haversineDistanceMeters(last.latitude, last.longitude, centerLat, centerLng);
       // Prefetched radius = last.radiusMeters * 3; visible radius = radiusMeters.
       // Remaining buffer = prefetched – moved – visible.  Re-query when < 0.
-      final remainingBuffer =
-          last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
+      final remainingBuffer = last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
       if (remainingBuffer >= radiusMeters) return;
     }
 
@@ -227,48 +243,42 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
     _lastQueriedViewport = newViewport;
     ref.read(mapViewportProvider.notifier).update(newViewport);
+    ref.read(syncServiceProvider).pullNear(centerLat, centerLng, radiusMeters * viewportPrefetchMultiplier);
   }
 
-  void _onCameraMove(CameraPosition position) {
-    _currentZoom = position.zoom;
+  void _onPositionChanged(MapCamera camera, bool hasGesture) {
+    _currentZoom = camera.zoom;
     final shouldShowDots = _currentZoom < _dotZoomThreshold;
-    if (shouldShowDots != _showDots) {
-      _showDots = shouldShowDots;
-      _rebuildMarkers();
-    }
+    final dotThresholdCrossed = shouldShowDots != _showDots;
+    if (dotThresholdCrossed) _showDots = shouldShowDots;
     if (_draft != null) {
       // Rebuild so the draft overlay (marker glyph + rotate handle) picks up
-      // the new bearing — it draws in screen space, so a two-finger map
-      // rotation changes where it needs to sit even though the draft's own
+      // the new bearing — it draws in screen space, so a map rotation
+      // changes where it needs to sit even though the draft's own
       // lat/lng/direction haven't changed.
-      setState(() => _currentBearing = position.bearing);
+      setState(() => _currentBearing = camera.rotation);
       _syncDraftScreenPosition();
     } else {
-      _currentBearing = position.bearing;
+      _currentBearing = camera.rotation;
     }
+    if (dotThresholdCrossed) _rebuildMarkers();
   }
 
-  void _onCameraIdle() {
-    _refreshViewport();
+  void _onMapEvent(MapEvent event) {
+    if (event is MapEventMoveEnd || event is MapEventRotateEnd) {
+      _refreshViewport();
+    }
   }
 
   /// Re-projects the draft's lat/lng anchor to screen coordinates — needed
   /// because pinch-zoom (still enabled while editing) changes the on-screen
   /// position of a point even though its geo position hasn't moved.
-  Future<void> _syncDraftScreenPosition() async {
-    final controller = _controller;
+  void _syncDraftScreenPosition() {
     final draft = _draft;
-    if (controller == null || draft == null) return;
-    final screenCoordinate = await controller.getScreenCoordinate(
-      draft.position,
-    );
-    if (!mounted || _draft == null) return;
-    final ratio = MediaQuery.of(context).devicePixelRatio;
+    if (draft == null) return;
+    final screenPoint = _controller.camera.latLngToScreenPoint(draft.position);
     setState(() {
-      _draftScreenPosition = Offset(
-        screenCoordinate.x / ratio,
-        screenCoordinate.y / ratio,
-      );
+      _draftScreenPosition = Offset(screenPoint.x, screenPoint.y);
     });
   }
 
@@ -279,14 +289,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// its content (approve/publish buttons, ignore action, etc). Reuses
   /// [_screenDeltaToLatLngDelta] (already used for drag math) to convert
   /// the needed on-screen shift into a lat/lng offset.
-  Future<void> _centerAboveBottomSheet(LatLng position, GlobalKey sheetKey) async {
-    final controller = _controller;
-    if (controller == null || !mounted) return;
+  void _centerAboveBottomSheet(LatLng position, GlobalKey sheetKey) {
     final sheetHeight = (sheetKey.currentContext?.findRenderObject() as RenderBox?)?.size.height;
     if (sheetHeight == null || sheetHeight <= 0) return;
     final delta = _screenDeltaToLatLngDelta(Offset(0, sheetHeight / 2), position.latitude);
     final target = LatLng(position.latitude + delta.dLat, position.longitude + delta.dLng);
-    await controller.animateCamera(CameraUpdate.newLatLng(target));
+    _controller.move(target, _currentZoom);
   }
 
   Future<void> _startDraft({
@@ -294,8 +302,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     SpeedCamera? existing,
   }) async {
     if (_draft != null) return;
-    final controller = _controller;
-    if (controller == null) return;
 
     final uid = ref.read(authStateProvider).value?.uid;
     final isOwner = existing != null && uid != null && existing.createdBy == uid;
@@ -335,9 +341,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     }
 
-    final screenCoordinate = await controller.getScreenCoordinate(position);
     if (!mounted) return;
-    final ratio = MediaQuery.of(context).devicePixelRatio;
+    final screenPoint = _controller.camera.latLngToScreenPoint(position);
 
     setState(() {
       _draft = CameraDraft(
@@ -359,10 +364,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         originalLimit: existing?.limit,
         originalDirection: existing?.direction,
       );
-      _draftScreenPosition = Offset(
-        screenCoordinate.x / ratio,
-        screenCoordinate.y / ratio,
-      );
+      _draftScreenPosition = Offset(screenPoint.x, screenPoint.y);
     });
     _rebuildMarkers();
 
@@ -569,8 +571,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// Updates `maxspeed`/`direction` on a camera's existing live
   /// OpenStreetMap node (features.md 4) — after an explicit confirmation,
-  /// since this writes real, public data. Also refreshes the local Firestore
-  /// cache so the map reflects the change without waiting for the next sync.
+  /// since this writes real, public data. Also refreshes the local store so
+  /// the map reflects the change without waiting for the next sync.
   Future<void> _saveOsmEdit(int limit) async {
     final draft = _draft;
     final nodeId = draft?.osmEditNodeId;
@@ -786,14 +788,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<void> _onFabPressed() async {
     if (_draft != null) return;
-    final controller = _controller;
-    if (controller == null) return;
-    final bounds = await controller.getVisibleRegion();
-    final center = LatLng(
-      (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
-      (bounds.northeast.longitude + bounds.southwest.longitude) / 2,
-    );
-    await _startDraft(position: center);
+    await _startDraft(position: _controller.camera.center);
   }
 
   void _onNavigationModePressed() {
@@ -828,9 +823,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           );
         },
         onCenter: (camera) {
-          _controller?.animateCamera(
-            CameraUpdate.newLatLng(LatLng(camera.lat, camera.lng)),
-          );
+          _controller.move(LatLng(camera.lat, camera.lng), _currentZoom);
         },
       ),
     );
@@ -888,41 +881,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
       body: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _initialPosition,
-              zoom: _currentZoom,
+          FlutterMap(
+            mapController: _controller,
+            options: MapOptions(
+              initialCenter: _initialPosition,
+              initialZoom: _currentZoom,
+              interactionOptions: MapStyleConfig.interactionOptions,
+              onPositionChanged: _onPositionChanged,
+              onLongPress: (tapPosition, point) => _startDraft(position: point),
             ),
-            markers: markers,
-            mapType: MapStyleConfig.mapTypeFor(
-              ref.watch(userSettingsProvider).value?.mapStyle ??
-                  MapStyle.normal,
-            ),
-            style: MapStyleConfig.styleJson,
-            // Sposta i controlli nativi (bottone "la mia posizione", zoom)
-            // sopra il FloatingActionButton "+", che altrimenti li
-            // sovrappone essendo entrambi ancorati in basso a destra.
-            padding: const EdgeInsets.only(bottom: 88),
-            zoomControlsEnabled: MapStyleConfig.zoomControlsEnabled,
-            zoomGesturesEnabled: MapStyleConfig.zoomGesturesEnabled,
-            compassEnabled: MapStyleConfig.compassEnabled,
-            mapToolbarEnabled: MapStyleConfig.mapToolbarEnabled,
-            buildingsEnabled: MapStyleConfig.buildingsEnabled,
-            indoorViewEnabled: MapStyleConfig.indoorViewEnabled,
-            trafficEnabled: MapStyleConfig.trafficEnabled,
-            liteModeEnabled: MapStyleConfig.liteModeEnabled,
-            myLocationEnabled: MapStyleConfig.myLocationEnabled,
-            myLocationButtonEnabled: MapStyleConfig.myLocationButtonEnabled,
-            rotateGesturesEnabled: MapStyleConfig.rotateGesturesEnabled,
-            tiltGesturesEnabled: MapStyleConfig.tiltGesturesEnabled,
-            scrollGesturesEnabled: draft == null,
-            onMapCreated: (controller) {
-              _controller = controller;
-              _refreshViewport();
-            },
-            onCameraMove: _onCameraMove,
-            onCameraIdle: _onCameraIdle,
-            onLongPress: (position) => _startDraft(position: position),
+            children: [
+              TileLayer(
+                urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
+                userAgentPackageName: TileSourceConfig.userAgentPackageName,
+              ),
+              if (_myLocation != null) CurrentLocationMarkerLayer(position: _myLocation!),
+              MarkerLayer(markers: markers),
+              const SimpleAttributionWidget(source: Text(TileSourceConfig.attribution)),
+            ],
           ),
           if (draft != null && _draftScreenPosition != null)
             DraftOverlay(
@@ -932,11 +908,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               onMarkerPanUpdate: _onMarkerPanUpdate,
               onHandlePanUpdate: _onHandlePanUpdate,
             ),
-          Positioned(
-            right: 60,
-            top: 12,
-            child: SafeArea(child: MapStyleToggle()),
-          ),
           if (showSyncReminder || showPendingBanner)
             Positioned(
               top: 0,

@@ -3,24 +3,24 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Shared drawing for the speed-camera glyph: a colored circular badge with
 /// the camera pictogram (`assets/speed_camera_icon.svg`) inside, and, when a
 /// direction is known, an arrow pointing towards the direction of travel the
 /// camera monitors.
 ///
-/// The badge and the arrow are rendered as **two independent pieces** on
-/// purpose: on a real `GoogleMap`, the badge must always stay upright on
-/// screen (billboard) regardless of the map's bearing or the camera's own
-/// direction, while the arrow must rotate to reflect the true monitored
-/// bearing. A single bitmap + `Marker.rotation` can't apply two different
-/// rotations to two parts of the same image, so callers place two `Marker`s
-/// at the same position — [iconForColor] (never rotated) and, only when a
-/// direction is known, [arrowForColor] (`flat: true`, rotated via
-/// `Marker.rotation`). The live draft overlay, which paints directly on a
-/// canvas it controls, uses [paintCombined] instead to get the same effect
-/// (upright badge, rotating arrow) in one widget.
+/// The badge and the arrow are rendered as **two independent markers** on
+/// purpose: the badge must always stay upright on screen (billboard)
+/// regardless of the map's bearing, while the arrow must rotate to reflect
+/// the true monitored bearing. `MapScreen` places two `flutter_map`
+/// `Marker`s at the same position — [SpeedCameraIconMarker] (`rotate: true`,
+/// so it's counter-rotated against the map's own rotation and stays
+/// upright) and, only when a direction is known, [SpeedCameraArrowMarker]
+/// (`rotate: false`, so it turns together with the map — the ground-plane
+/// behavior needed for its rotation degrees to mean a true compass bearing).
+/// The live draft overlay, which paints directly on a canvas it controls,
+/// uses [paintCombined] instead to get the same effect (upright badge,
+/// rotating arrow) in one widget.
 class SpeedCameraMarkerIcons {
   SpeedCameraMarkerIcons._();
 
@@ -33,7 +33,6 @@ class SpeedCameraMarkerIcons {
   // The arrowhead's apex extends slightly past the shaft tip — reserved here
   // so it isn't clipped by the canvas bounds.
   static const double _arrowHeadApex = arrowHeadLength * 0.6;
-  static const double _renderScale = 3;
 
   /// White border (matching the badge's own ring) plus a very thin grey
   /// hairline just outside it — applied identically to the circle and the
@@ -44,21 +43,19 @@ class SpeedCameraMarkerIcons {
   static const double _borderMargin = _whiteBorderWidth + _grayBorderWidth;
   static const Color _grayBorderColor = Color(0xFF9E9E9E);
 
-  /// Dimensions of the standalone icon-only bitmap (billboard marker) — a
-  /// square centered on the camera's position, sized to fit the circle plus
-  /// its white/grey border.
+  /// Dimensions of the standalone icon-only marker (billboard) — a square
+  /// centered on the camera's position, sized to fit the circle plus its
+  /// white/grey border.
   static const double iconSize = (circleRadius + _borderMargin) * 2;
-  static const Offset iconAnchor = Offset(0.5, 0.5);
 
-  /// Dimensions of the standalone arrow-only bitmap (rotating marker) —
-  /// anchored at its bottom-center, which sits exactly at the camera's
-  /// position, so the arrow appears to extend outward from the badge's edge.
-  /// Widened/heightened over the bare arrow geometry to leave room for its
-  /// own border without clipping.
+  /// Dimensions of the standalone arrow-only marker (rotating) — anchored
+  /// at its bottom-center, which sits exactly at the camera's position, so
+  /// the arrow appears to extend outward from the badge's edge. Widened/
+  /// heightened over the bare arrow geometry to leave room for its own
+  /// border without clipping.
   static const double arrowWidth = arrowHeadWidth + _borderMargin * 2;
   static const double arrowHeight =
       circleRadius + arrowLength + _arrowHeadApex + _borderMargin;
-  static const Offset arrowAnchor = Offset(0.5, 1.0);
 
   /// Combined bounding box for the live draft overlay ([paintCombined]),
   /// which draws both pieces on one canvas it positions itself — the widest
@@ -74,25 +71,13 @@ class SpeedCameraMarkerIcons {
   /// Kicks off (idempotently) loading the SVG pictogram, so it's already
   /// cached by the time [paintIcon]/[paintCombined] need to paint
   /// synchronously (e.g. from `CustomPainter.paint`). Safe to call eagerly
-  /// and repeatedly; callers don't need to await this themselves except the
-  /// bitmap-baking path ([iconForColor]), which does.
+  /// and repeatedly.
   static Future<void> ensureIconLoaded() {
     return _iconLoadFuture ??= () async {
       final info = await vg.loadPicture(const SvgAssetLoader(_svgAsset), null);
       _iconPicture = info.picture;
       _iconPictureSize = info.size;
     }();
-  }
-
-  static final Map<Color, BitmapDescriptor> _iconCache = {};
-  static final Map<Color, BitmapDescriptor> _arrowCache = {};
-
-  static Future<BitmapDescriptor> iconForColor(Color color) async {
-    return _iconCache[color] ??= await _renderIcon(color);
-  }
-
-  static Future<BitmapDescriptor> arrowForColor(Color color) async {
-    return _arrowCache[color] ??= await _renderArrow(color);
   }
 
   /// Draws the badge (circle + camera pictogram) centered at [center],
@@ -219,9 +204,9 @@ class SpeedCameraMarkerIcons {
   }
 
   /// Draws both pieces on one canvas — used by the live draft overlay,
-  /// which (unlike a real `GoogleMap`) fully controls its own canvas and can
-  /// rotate the arrow independently of the always-upright badge in a single
-  /// paint call. [rotationDegrees] only ever affects the arrow.
+  /// which (unlike two separate map markers) fully controls its own canvas
+  /// and can rotate the arrow independently of the always-upright badge in
+  /// a single paint call. [rotationDegrees] only ever affects the arrow.
   static void paintCombined(
     Canvas canvas,
     Offset center,
@@ -234,35 +219,78 @@ class SpeedCameraMarkerIcons {
     }
     paintIcon(canvas, center, color);
   }
+}
 
-  static Future<BitmapDescriptor> _renderIcon(Color color) async {
-    await ensureIconLoaded();
-    final rawSize = iconSize * _renderScale;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, rawSize, rawSize))..scale(_renderScale);
-    paintIcon(canvas, const Offset(iconSize / 2, iconSize / 2), color);
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(rawSize.round(), rawSize.round());
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: iconSize, height: iconSize);
+/// `flutter_map` `Marker.child` for the always-upright badge — pair with
+/// `Marker(rotate: true, ...)` so it's counter-rotated against the map's own
+/// rotation. See [SpeedCameraMarkerIcons] for why this and
+/// [SpeedCameraArrowMarker] are two separate markers.
+class SpeedCameraIconMarker extends StatelessWidget {
+  const SpeedCameraIconMarker({super.key, required this.color});
+
+  final Color color;
+
+  static const double size = SpeedCameraMarkerIcons.iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(size: const Size(size, size), painter: _IconPainter(color));
+  }
+}
+
+class _IconPainter extends CustomPainter {
+  const _IconPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    SpeedCameraMarkerIcons.paintIcon(canvas, Offset(size.width / 2, size.height / 2), color);
   }
 
-  static Future<BitmapDescriptor> _renderArrow(Color color) async {
-    final rawWidth = arrowWidth * _renderScale;
-    final rawHeight = arrowHeight * _renderScale;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, rawWidth, rawHeight))
-      ..scale(_renderScale);
-    // The camera's actual position sits at the bottom-center of this bitmap
-    // (see [arrowAnchor]) — draw the arrow pointing straight up from there.
-    paintArrow(canvas, const Offset(arrowWidth / 2, arrowHeight), color, 0);
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(rawWidth.round(), rawHeight.round());
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(
-      bytes!.buffer.asUint8List(),
-      width: arrowWidth,
-      height: arrowHeight,
+  @override
+  bool shouldRepaint(_IconPainter oldDelegate) => oldDelegate.color != color;
+}
+
+/// `flutter_map` `Marker.child` for the rotating direction arrow — pair with
+/// `Marker(rotate: false, ...)` (the default) so it turns together with the
+/// map, the ground-plane behavior [rotationDegrees] (a true compass
+/// bearing) needs. Anchored at the bottom-center via
+/// `Marker(alignment: Alignment.topCenter, ...)`, matching
+/// [SpeedCameraMarkerIcons.arrowHeight]'s bottom-anchored geometry.
+class SpeedCameraArrowMarker extends StatelessWidget {
+  const SpeedCameraArrowMarker({super.key, required this.color, required this.rotationDegrees});
+
+  final Color color;
+  final double rotationDegrees;
+
+  static const double width = SpeedCameraMarkerIcons.arrowWidth;
+  static const double height = SpeedCameraMarkerIcons.arrowHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(width, height),
+      painter: _ArrowPainter(color, rotationDegrees),
     );
   }
+}
+
+class _ArrowPainter extends CustomPainter {
+  const _ArrowPainter(this.color, this.rotationDegrees);
+
+  final Color color;
+  final double rotationDegrees;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // The camera's actual position sits at the bottom-center of this widget
+    // (see the marker's `Alignment.topCenter` in MapScreen) — draw the arrow
+    // pointing straight up from there before rotation is applied.
+    SpeedCameraMarkerIcons.paintArrow(canvas, Offset(size.width / 2, size.height), color, rotationDegrees);
+  }
+
+  @override
+  bool shouldRepaint(_ArrowPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.rotationDegrees != rotationDegrees;
 }

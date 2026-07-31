@@ -14,12 +14,10 @@
 class TileSourceConfig {
   const TileSourceConfig._();
 
-  /// Standard OSM raster tile endpoint — {s} load-balances across the
-  /// a/b/c subdomains per the usage policy's own recommendation.
-  static const String onlineRasterUrlTemplate =
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-  static const List<String> onlineRasterSubdomains = ['a', 'b', 'c'];
+  /// Standard OSM raster tile endpoint — no `{s}` subdomains: OSM Operations
+  /// now asks clients not to use them (see
+  /// https://github.com/openstreetmap/operations/issues/737).
+  static const String onlineRasterUrlTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   /// Required by the OSM Tile Usage Policy for any app consuming the
   /// public tile server.
