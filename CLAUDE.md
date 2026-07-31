@@ -21,15 +21,13 @@ Questi file sono **intenzionalmente non versionati** (percorsi o credenziali spe
    ```properties
    sdk.dir=<percorso Android SDK>
    flutter.sdk=<percorso Flutter SDK>
-   MAPS_API_KEY=<API key Maps SDK for Android>
    ```
-   La `MAPS_API_KEY` si ottiene da Google Cloud Console (progetto `bortho-autovelox`) → *API e servizi* → abilita **Maps SDK for Android** → crea/recupera una API key.
 
 2. **Google Sign-In — impronta SHA-1 per macchina**: ogni macchina ha un proprio keystore di debug (`~/.android/debug.keystore`), quindi una SHA-1 diversa. Su ogni nuova macchina:
    ```bash
    keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
    ```
-   e registrare la riga `SHA1` in Firebase Console → Project settings → app Android `com.bortho.autovelox` → *Aggiungi impronta digitale*. La stessa impronta va incollata anche nella whitelist della `MAPS_API_KEY` (Google Cloud Console → Credenziali → restrizioni). Senza questo, login Google e/o mappa falliscono solo su quella macchina.
+   e registrare la riga `SHA1` in Firebase Console → Project settings → app Android `com.bortho.autovelox` → *Aggiungi impronta digitale*. Senza questo, il login Google fallisce solo su quella macchina.
 
    Il `googleServerClientId` (Web client ID) invece **è** versionato in [`lib/core/constants/auth_config.dart`](lib/core/constants/auth_config.dart) — non va rigenerato.
 

@@ -9,14 +9,6 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
-    }
-}
-val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY") ?: ""
-
 // Release signing — never committed (android/.gitignore ignores key.properties
 // and *.p12/*.jks). Populated locally by pointing storeFile at your own
 // keystore, or in CI by writing this file + decoding the keystore from a
@@ -55,7 +47,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     signingConfigs {

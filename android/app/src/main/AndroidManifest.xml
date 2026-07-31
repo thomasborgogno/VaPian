@@ -20,9 +20,6 @@
         android:name="com.bortho.autovelox.carapp.AutoveloxApplication"
         android:icon="@mipmap/launcher_icon">
         <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
-        <meta-data
             android:name="androidx.car.app.minCarApiLevel"
             android:value="1" />
         <meta-data

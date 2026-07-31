@@ -20,7 +20,7 @@ L'obiettivo di questo piano è fissare la struttura di cartelle, lo schema dati,
 
 **Dart (telefono):**
 - State management: **Riverpod** (`flutter_riverpod`) — si integra bene con gli `Stream` di Firestore (`StreamProvider`) e disaccoppia UI da repository, facilitando i test.
-- `firebase_core`, `cloud_firestore`, `firebase_auth`, `google_sign_in`, `location`, `google_maps_flutter` (già presenti).
+- `firebase_core`, `cloud_firestore`, `firebase_auth`, `google_sign_in`, `location`, `flutter_map` + `vector_map_tiles` (mappa OpenStreetMap, sostituisce `google_maps_flutter` — vedi § Fase OSM offline).
 - Da aggiungere in Fase 3: `oauth2` + `http` (OAuth OSM + REST changeset), `flutter_secure_storage` (token OSM cifrato, come richiesto in `features.md` §4).
 
 **Kotlin (auto):**

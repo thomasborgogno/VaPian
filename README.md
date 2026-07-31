@@ -6,7 +6,7 @@ L'app integra i dati geografici di **OpenStreetMap** (via query Overpass), un da
 
 ## Funzionalità principali
 
-- **Mappa interattiva** (Google Maps SDK) con marker colorati per fonte/stato (OSM verificato, segnalazione utente approvata/in attesa).
+- **Mappa interattiva** (OpenStreetMap, via `flutter_map`) con marker colorati per fonte/stato (OSM verificato, segnalazione utente approvata/in attesa).
 - **Inserimento/eliminazione** di autovelox tramite pressione prolungata o pulsante flottante, con direzione e limite di velocità.
 - **Blacklist personale** per nascondere autovelox OSM non più presenti nella realtà, senza modificare il dato condiviso.
 - **Filtro mappa** per limite di velocità o per soli elementi ignorati.
@@ -26,7 +26,7 @@ La specifica funzionale completa è in [`features.md`](features.md); le decision
 
 ## Stack
 
-- **Dart/Flutter**: Riverpod (state management), `cloud_firestore` + `firebase_auth` + `google_sign_in`, `google_maps_flutter`, `location`, `flutter_secure_storage` (token OSM), `flutter_tts`, `wakelock_plus`.
+- **Dart/Flutter**: Riverpod (state management), `cloud_firestore` + `firebase_auth` + `google_sign_in`, `flutter_map` (mappa OpenStreetMap), `sqflite` (store locale offline), `location`, `flutter_secure_storage` (token OSM), `flutter_tts`, `wakelock_plus`.
 - **Kotlin (Android Auto)**: `androidx.car.app`, Firebase Android SDK nativo, `FusedLocationProviderClient`, `TextToSpeech`.
 
 ## Setup di sviluppo
@@ -39,15 +39,13 @@ Alcuni file sono **intenzionalmente non versionati** (percorsi/credenziali speci
    ```properties
    sdk.dir=<percorso Android SDK>
    flutter.sdk=<percorso Flutter SDK>
-   MAPS_API_KEY=<API key Maps SDK for Android>
    ```
-   La `MAPS_API_KEY` si ottiene da Google Cloud Console (progetto `bortho-autovelox`) → *API e servizi* → abilita **Maps SDK for Android** → crea/recupera una API key.
 
 2. **Google Sign-In — impronta SHA-1 per macchina**: ogni macchina ha un proprio keystore di debug, quindi una SHA-1 diversa.
    ```bash
    keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
    ```
-   Registra la riga `SHA1` in Firebase Console → Project settings → app Android `com.bortho.autovelox`, e nella whitelist della `MAPS_API_KEY` (Google Cloud Console → Credenziali → restrizioni).
+   Registra la riga `SHA1` in Firebase Console → Project settings → app Android `com.bortho.autovelox`.
 
 3. **`google-services.json` / `lib/firebase_options.dart`**: già versionati (i client identifier Firebase non sono segreti: l'accesso è protetto dalle Firestore Security Rules in [`firestore.rules`](firestore.rules) e dalle restrizioni per package/SHA-1 sulla API key), non serve rifare `flutterfire configure`.
 
