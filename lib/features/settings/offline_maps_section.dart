@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/constants/italian_regions.dart';
+import '../../core/constants/italian_macro_zones.dart';
 import '../../data/providers.dart';
 
-/// Offline map region download: which Italian regions get their vector
-/// tiles (`.mbtiles`, self-hosted — see `tools/offline_tiles/README.md`)
-/// and speed-camera data downloaded for full offline use. Mirrors
-/// `OsmSyncSection`'s region-picker pattern, but downloads map tiles +
-/// primes the local camera store (`SyncService.primeRegion`) instead of
-/// syncing fresh Overpass data.
+/// Offline map zone download: which of Geofabrik's 5 Italian macro-zones
+/// (`italianMacroZones` — coarser than the 20 administrative regions
+/// `OsmSyncSection` uses for Overpass sync, so there are far fewer, larger
+/// files to generate/download) get their vector tiles (`.mbtiles`,
+/// self-hosted — see `tools/offline_tiles/README.md`) and speed-camera data
+/// downloaded for full offline use. Mirrors `OsmSyncSection`'s picker
+/// pattern, but downloads map tiles + primes the local camera store
+/// (`SyncService.primeZone`) instead of syncing fresh Overpass data.
 class OfflineMapsSection extends ConsumerStatefulWidget {
   const OfflineMapsSection({
     super.key,
-    required this.selectedRegions,
-    required this.onRegionsChanged,
+    required this.selectedZones,
+    required this.onZonesChanged,
   });
 
-  final List<String> selectedRegions;
-  final ValueChanged<List<String>> onRegionsChanged;
+  final List<String> selectedZones;
+  final ValueChanged<List<String>> onZonesChanged;
 
   @override
   ConsumerState<OfflineMapsSection> createState() => _OfflineMapsSectionState();
@@ -28,22 +30,22 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
   bool _isDownloading = false;
   String? _resultMessage;
   double? _currentProgress;
-  String? _currentRegion;
+  String? _currentZone;
 
-  Future<void> _openRegionPicker() {
+  Future<void> _openZonePicker() {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _RegionPickerSheet(
-        initialSelectedRegions: widget.selectedRegions,
-        onRegionsChanged: widget.onRegionsChanged,
+      builder: (context) => _ZonePickerSheet(
+        initialSelectedZones: widget.selectedZones,
+        onZonesChanged: widget.onZonesChanged,
       ),
     );
   }
 
   Future<void> _download() async {
-    if (widget.selectedRegions.isEmpty) {
-      setState(() => _resultMessage = 'Seleziona almeno una regione.');
+    if (widget.selectedZones.isEmpty) {
+      setState(() => _resultMessage = 'Seleziona almeno una zona.');
       return;
     }
     setState(() {
@@ -53,41 +55,41 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
 
     final tileService = ref.read(offlineTileServiceProvider);
     final syncService = ref.read(syncServiceProvider);
-    final failedRegions = <String>[];
+    final failedZones = <String>[];
 
-    // Same failure-isolation approach as OsmSyncSection: one region's
+    // Same failure-isolation approach as OsmSyncSection: one zone's
     // download failing (e.g. the .mbtiles hasn't been published to Storage
     // yet) shouldn't abort the rest.
-    for (final region in widget.selectedRegions) {
+    for (final zone in widget.selectedZones) {
       setState(() {
-        _currentRegion = region;
+        _currentZone = zone;
         _currentProgress = 0;
       });
       try {
-        await tileService.downloadRegion(region).forEach((progress) {
+        await tileService.downloadZone(zone).forEach((progress) {
           if (mounted) setState(() => _currentProgress = progress);
         });
-        await syncService.primeRegion(region);
+        await syncService.primeZone(zone);
       } catch (_) {
-        failedRegions.add(region);
+        failedZones.add(zone);
       }
     }
 
-    // The map screens only pick a region's local vector tiles when this
+    // The map screens only pick a zone's local vector tiles when this
     // provider reports it as downloaded — invalidate it now that (some of)
     // the downloads just completed, rather than waiting for something else
     // to trigger a refresh.
-    ref.invalidate(downloadedRegionsProvider);
+    ref.invalidate(downloadedZonesProvider);
 
     if (mounted) {
       setState(() {
         _isDownloading = false;
-        _currentRegion = null;
+        _currentZone = null;
         _currentProgress = null;
-        _resultMessage = failedRegions.isEmpty
-            ? '${widget.selectedRegions.length} regioni scaricate per l\'uso offline.'
-            : 'Scaricate ${widget.selectedRegions.length - failedRegions.length} regioni. '
-                'Non riuscite: ${failedRegions.join(', ')}.';
+        _resultMessage = failedZones.isEmpty
+            ? '${widget.selectedZones.length} zone scaricate per l\'uso offline.'
+            : 'Scaricate ${widget.selectedZones.length - failedZones.length} zone. '
+                'Non riuscite: ${failedZones.join(', ')}.';
       });
     }
   }
@@ -100,7 +102,7 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
         Text('Mappe offline', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
-          'Scarica le mappe e gli autovelox delle regioni selezionate, per usare '
+          'Scarica le mappe e gli autovelox delle zone selezionate, per usare '
           'l\'app e navigare anche senza connessione a internet.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
@@ -108,13 +110,13 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(
-            widget.selectedRegions.isEmpty
-                ? 'Nessuna regione selezionata'
-                : widget.selectedRegions.join(', '),
+            widget.selectedZones.isEmpty
+                ? 'Nessuna zona selezionata'
+                : widget.selectedZones.join(', '),
           ),
-          subtitle: Text('${widget.selectedRegions.length} regioni selezionate'),
+          subtitle: Text('${widget.selectedZones.length} zone selezionate'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: _isDownloading ? null : _openRegionPicker,
+          onTap: _isDownloading ? null : _openZonePicker,
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
@@ -128,9 +130,9 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
               : const Icon(Icons.download_for_offline),
           label: const Text('Scarica per offline'),
         ),
-        if (_isDownloading && _currentRegion != null) ...[
+        if (_isDownloading && _currentZone != null) ...[
           const SizedBox(height: 8),
-          Text('Scaricamento $_currentRegion...', style: Theme.of(context).textTheme.bodySmall),
+          Text('Scaricamento $_currentZone...', style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 4),
           LinearProgressIndicator(value: _currentProgress),
         ],
@@ -143,25 +145,25 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
   }
 }
 
-class _RegionPickerSheet extends StatefulWidget {
-  const _RegionPickerSheet({
-    required this.initialSelectedRegions,
-    required this.onRegionsChanged,
+class _ZonePickerSheet extends StatefulWidget {
+  const _ZonePickerSheet({
+    required this.initialSelectedZones,
+    required this.onZonesChanged,
   });
 
-  final List<String> initialSelectedRegions;
-  final ValueChanged<List<String>> onRegionsChanged;
+  final List<String> initialSelectedZones;
+  final ValueChanged<List<String>> onZonesChanged;
 
   @override
-  State<_RegionPickerSheet> createState() => _RegionPickerSheetState();
+  State<_ZonePickerSheet> createState() => _ZonePickerSheetState();
 }
 
-class _RegionPickerSheetState extends State<_RegionPickerSheet> {
-  late final List<String> _selected = [...widget.initialSelectedRegions];
+class _ZonePickerSheetState extends State<_ZonePickerSheet> {
+  late final List<String> _selected = [...widget.initialSelectedZones];
 
-  void _toggle(String region, bool selected) {
-    setState(() => selected ? _selected.add(region) : _selected.remove(region));
-    widget.onRegionsChanged(_selected);
+  void _toggle(String zone, bool selected) {
+    setState(() => selected ? _selected.add(zone) : _selected.remove(zone));
+    widget.onZonesChanged(_selected);
   }
 
   @override
@@ -173,17 +175,17 @@ class _RegionPickerSheetState extends State<_RegionPickerSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Regioni da scaricare', style: Theme.of(context).textTheme.titleMedium),
+            Text('Zone da scaricare', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 4,
-              children: italianRegions
+              children: italianMacroZoneNames
                   .map(
-                    (region) => FilterChip(
-                      label: Text(region),
-                      selected: _selected.contains(region),
-                      onSelected: (selected) => _toggle(region, selected),
+                    (zone) => FilterChip(
+                      label: Text(zone),
+                      selected: _selected.contains(zone),
+                      onSelected: (selected) => _toggle(zone, selected),
                     ),
                   )
                   .toList(),

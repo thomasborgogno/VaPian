@@ -141,9 +141,9 @@ class _SettingsBodyState extends ConsumerState<_SettingsBody> {
         ),
         const Divider(height: 32),
         OfflineMapsSection(
-          selectedRegions: _settings.offlineMapRegions,
-          onRegionsChanged: (regions) =>
-              _applyChange((s) => s.copyWith(offlineMapRegions: regions)),
+          selectedZones: _settings.offlineMapZones,
+          onZonesChanged: (zones) =>
+              _applyChange((s) => s.copyWith(offlineMapZones: zones)),
         ),
         const Divider(height: 32),
         OsmSyncSection(

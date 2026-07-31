@@ -47,7 +47,6 @@ dependencies:
   vector_tile_renderer: ^5.2.1
   mbtiles: ^0.4.2
   path_provider: ^2.1.5
-  firebase_storage: ^13.1.4
   http: ^1.6.0
   flutter_web_auth_2: ^5.0.3
   crypto: ^3.0.7

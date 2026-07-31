@@ -18,7 +18,7 @@ class UserSettings {
     this.osmLinked = false,
     this.lastOsmSyncAt,
     this.osmSyncRegions = const [],
-    this.offlineMapRegions = const [],
+    this.offlineMapZones = const [],
   });
 
   factory UserSettings.fromMap(Map<String, dynamic> map) {
@@ -30,8 +30,7 @@ class UserSettings {
       osmLinked: map['osmLinked'] as bool? ?? false,
       lastOsmSyncAt: (map['lastOsmSyncAt'] as Timestamp?)?.toDate(),
       osmSyncRegions: (map['osmSyncRegions'] as List<dynamic>?)?.cast<String>() ?? const [],
-      offlineMapRegions:
-          (map['offlineMapRegions'] as List<dynamic>?)?.cast<String>() ?? const [],
+      offlineMapZones: (map['offlineMapZones'] as List<dynamic>?)?.cast<String>() ?? const [],
     );
   }
 
@@ -46,11 +45,12 @@ class UserSettings {
   /// sync — multi-select, persisted so the choice survives across sessions.
   final List<String> osmSyncRegions;
 
-  /// Italian regions downloaded for offline map tiles + primed local camera
-  /// data (see `OfflineMapsSection`/`OfflineTileService`) — separate from
-  /// [osmSyncRegions], which is about pulling fresh Overpass data, not
-  /// about what's available offline.
-  final List<String> offlineMapRegions;
+  /// Geofabrik macro-zones (see `italianMacroZones`) downloaded for offline
+  /// map tiles + primed local camera data (see
+  /// `OfflineMapsSection`/`OfflineTileService`) — separate from
+  /// [osmSyncRegions], which is about pulling fresh Overpass data at the
+  /// finer 20-region granularity, not about what's available offline.
+  final List<String> offlineMapZones;
 
   Map<String, dynamic> toMap() {
     return {
@@ -59,7 +59,7 @@ class UserSettings {
       'toleranceFilterEnabled': toleranceFilterEnabled,
       'osmLinked': osmLinked,
       'osmSyncRegions': osmSyncRegions,
-      'offlineMapRegions': offlineMapRegions,
+      'offlineMapZones': offlineMapZones,
       if (lastOsmSyncAt != null) 'lastOsmSyncAt': Timestamp.fromDate(lastOsmSyncAt!),
     };
   }
@@ -71,7 +71,7 @@ class UserSettings {
     bool? osmLinked,
     DateTime? lastOsmSyncAt,
     List<String>? osmSyncRegions,
-    List<String>? offlineMapRegions,
+    List<String>? offlineMapZones,
   }) {
     return UserSettings(
       alertDistanceMode: alertDistanceMode ?? this.alertDistanceMode,
@@ -80,7 +80,7 @@ class UserSettings {
       osmLinked: osmLinked ?? this.osmLinked,
       lastOsmSyncAt: lastOsmSyncAt ?? this.lastOsmSyncAt,
       osmSyncRegions: osmSyncRegions ?? this.osmSyncRegions,
-      offlineMapRegions: offlineMapRegions ?? this.offlineMapRegions,
+      offlineMapZones: offlineMapZones ?? this.offlineMapZones,
     );
   }
 }

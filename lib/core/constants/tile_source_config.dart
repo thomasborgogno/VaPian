@@ -8,12 +8,13 @@ import 'maptiler_config.dart';
 ///   [MaptilerConfig.isConfigured], falling back to CARTO's free,
 ///   keyless "Voyager" basemap otherwise — so the map still works out of
 ///   the box on a machine that hasn't set up a MapTiler key yet. Used
-///   whenever a region hasn't been downloaded for offline use, or the
-///   point being viewed falls outside every downloaded region.
-/// - **Offline, per region**: self-hosted vector tiles (Planetiler-built
-///   `.mbtiles`, one per Italian region, published to Firebase Storage —
-///   see `tools/offline_tiles/README.md`) downloaded by the user in
-///   Settings and read locally via `vector_map_tiles_mbtiles`. Wired up in
+///   whenever a zone hasn't been downloaded for offline use, or the point
+///   being viewed falls outside every downloaded zone.
+/// - **Offline, per macro-zone**: self-hosted vector tiles (Planetiler-built
+///   `.mbtiles`, one per Geofabrik macro-zone — see `italianMacroZones` —
+///   published as GitHub Release assets, see
+///   `tools/offline_tiles/README.md`) downloaded by the user in Settings
+///   and read locally via `vector_map_tiles_mbtiles`. Wired up in
 ///   `OfflineMapsSection`/`OfflineTileService`.
 class TileSourceConfig {
   const TileSourceConfig._();
@@ -47,8 +48,16 @@ class TileSourceConfig {
   /// an identifiable one, not the Dart/Flutter default.
   static const String userAgentPackageName = 'com.bortho.autovelox';
 
-  /// Firebase Storage object path for a downloaded region's vector tiles —
-  /// `{region}` is the Italian region name (see `italianRegions`), matching
-  /// what the Planetiler pipeline is expected to publish.
-  static String mbtilesStoragePath(String region) => 'offline_tiles/$region.mbtiles';
+  /// GitHub Release used to publish the self-hosted `.mbtiles`
+  /// (`.github/workflows/offline_tiles.yml`) — a fixed tag on a public repo,
+  /// re-published (assets replaced) on every pipeline run rather than
+  /// versioned per-release.
+  static const String _tilesRepoSlug = 'thomasborgogno/VaPian';
+  static const String _tilesReleaseTag = 'offline-tiles-latest';
+
+  /// Public download URL for a zone's vector tiles — `{zone}` is one of
+  /// `italianMacroZoneNames`, matching what the Planetiler pipeline
+  /// publishes as the release asset file name.
+  static String mbtilesDownloadUrl(String zone) =>
+      'https://github.com/$_tilesRepoSlug/releases/download/$_tilesReleaseTag/$zone.mbtiles';
 }

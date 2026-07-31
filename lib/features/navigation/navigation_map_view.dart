@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../core/constants/italian_region_bounds.dart';
+import '../../core/constants/italian_macro_zones.dart';
 import '../../core/constants/tile_source_config.dart';
 import '../../core/utils/geo.dart';
 import '../map/current_location_marker.dart';
@@ -33,16 +33,16 @@ class NavigationMapView extends StatefulWidget {
     super.key,
     required this.controller,
     required this.amoled,
-    this.downloadedRegions = const {},
+    this.downloadedZones = const {},
   });
 
   final NavigationAlertController controller;
   final bool amoled;
 
-  /// Regions with local vector tiles available offline
-  /// (`downloadedRegionsProvider`) — passed in rather than read directly
+  /// Macro-zones with local vector tiles available offline
+  /// (`downloadedZonesProvider`) — passed in rather than read directly
   /// since this widget isn't itself a `ConsumerWidget`.
-  final Set<String> downloadedRegions;
+  final Set<String> downloadedZones;
 
   @override
   State<NavigationMapView> createState() => _NavigationMapViewState();
@@ -183,12 +183,12 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   Widget build(BuildContext context) {
     final lat = widget.controller.currentLat ?? MapViewport.initial.latitude;
     final lng = widget.controller.currentLng ?? MapViewport.initial.longitude;
-    final region = regionContaining(lat, lng);
-    final activeRegion =
-        (region != null && widget.downloadedRegions.contains(region)) ? region : null;
+    final zone = zoneContaining(lat, lng);
+    final activeZone =
+        (zone != null && widget.downloadedZones.contains(zone.name)) ? zone.name : null;
 
-    Widget baseLayer = activeRegion != null
-        ? OfflineVectorTileLayer(key: ValueKey(activeRegion), region: activeRegion)
+    Widget baseLayer = activeZone != null
+        ? OfflineVectorTileLayer(key: ValueKey(activeZone), zone: activeZone)
         : TileLayer(
             urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
             subdomains: TileSourceConfig.onlineRasterSubdomains,

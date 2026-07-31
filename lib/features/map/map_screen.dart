@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart' as loc;
 
-import '../../core/constants/italian_region_bounds.dart';
+import '../../core/constants/italian_macro_zones.dart';
 import '../../core/constants/tile_source_config.dart';
 import '../../core/utils/geo.dart';
 import '../../core/widgets/user_avatar.dart';
@@ -69,11 +69,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _currentBearing = 0;
   bool _syncReminderDismissed = false;
 
-  /// Downloaded region whose local vector tiles cover the current viewport
-  /// — null when there isn't one, meaning the online raster tiles
+  /// Downloaded zone whose local vector tiles cover the current viewport —
+  /// null when there isn't one, meaning the online raster tiles
   /// (`TileSourceConfig`) should render instead. Updated in
   /// [_refreshViewport].
-  String? _activeMbtilesRegion;
+  String? _activeMbtilesZone;
   LatLng? _myLocation;
   StreamSubscription<loc.LocationData>? _locationSubscription;
 
@@ -243,15 +243,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       bounds.east,
     );
 
-    // Swaps to the region's local vector tiles once the map settles inside
-    // a downloaded region, back to the online raster fallback otherwise —
+    // Swaps to the zone's local vector tiles once the map settles inside a
+    // downloaded zone, back to the online raster fallback otherwise —
     // checked here (on settle) rather than every frame, so the tile source
     // doesn't flicker mid-gesture.
-    final region = regionContaining(centerLat, centerLng);
-    final downloaded = ref.read(downloadedRegionsProvider).value ?? const {};
-    final activeRegion = (region != null && downloaded.contains(region)) ? region : null;
-    if (activeRegion != _activeMbtilesRegion) {
-      setState(() => _activeMbtilesRegion = activeRegion);
+    final zone = zoneContaining(centerLat, centerLng);
+    final downloaded = ref.read(downloadedZonesProvider).value ?? const {};
+    final activeZone = (zone != null && downloaded.contains(zone.name)) ? zone.name : null;
+    if (activeZone != _activeMbtilesZone) {
+      setState(() => _activeMbtilesZone = activeZone);
     }
 
     // Skip the re-query if the new center is still well inside the already-
@@ -977,10 +977,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               onLongPress: (tapPosition, point) => _startDraft(position: point),
             ),
             children: [
-              if (_activeMbtilesRegion != null)
+              if (_activeMbtilesZone != null)
                 OfflineVectorTileLayer(
-                  key: ValueKey(_activeMbtilesRegion),
-                  region: _activeMbtilesRegion!,
+                  key: ValueKey(_activeMbtilesZone),
+                  zone: _activeMbtilesZone!,
                 )
               else
                 TileLayer(
