@@ -863,6 +863,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ],
         ),
         actions: [
+          if ((ref.watch(pendingSyncCountProvider).value ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Tooltip(
+                message:
+                    '${ref.watch(pendingSyncCountProvider).value} modifiche in attesa di sincronizzazione',
+                child: Badge(
+                  label: Text('${ref.watch(pendingSyncCountProvider).value}'),
+                  child: const Icon(Icons.cloud_off),
+                ),
+              ),
+            ),
           IconButton(
             icon: _filter.isActive
                 ? const Badge(smallSize: 8, child: Icon(Icons.filter_list))

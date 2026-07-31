@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'local/app_database.dart';
+import 'local/local_change_bus.dart';
+import 'local/sync_queue_dao.dart';
 import 'models/queued_ignore.dart';
 import 'models/speed_camera.dart';
 import 'models/sync_metadata.dart';
@@ -61,6 +64,19 @@ final userSettingsProvider = StreamProvider<UserSettings>((ref) {
 
 final syncMetadataProvider = StreamProvider<SyncMetadata>((ref) {
   return ref.watch(settingsRepositoryProvider).watchGlobalSyncMetadata();
+});
+
+/// Number of local writes (new/edited/deleted cameras, ignore/unignore,
+/// queued Android Auto ignores) not yet confirmed pushed to Firestore —
+/// surfaced as a small "in attesa di sincronizzazione" indicator so a user
+/// who edited something offline knows it hasn't reached the server yet.
+/// Re-queries on every [LocalChangeBus] tick, same pattern as the
+/// local-first repositories' own `watch*` streams.
+final pendingSyncCountProvider = StreamProvider<int>((ref) async* {
+  final dao = SyncQueueDao(await sharedDatabase());
+  Future<int> query() => dao.pendingCount();
+  yield await query();
+  yield* LocalChangeBus.instance.onChange.asyncMap((_) => query());
 });
 
 /// IDs of cameras the current user has chosen to hide (features.md 2.1

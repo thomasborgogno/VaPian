@@ -65,6 +65,7 @@ class SyncService {
         try {
           await _replay(db, op);
           await dao.remove(op.rowId);
+          LocalChangeBus.instance.notify();
         } catch (error, stackTrace) {
           await dao.markAttempted(op.rowId);
           developer.log(
