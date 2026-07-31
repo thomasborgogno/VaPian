@@ -142,7 +142,11 @@ class AppDatabase {
   static Future<void> _configure(Database db) async {
     // WAL: readers don't block behind the native Kotlin side's writer (or
     // vice versa) since both open this same file from the same process.
-    await db.execute('PRAGMA journal_mode=WAL');
+    // `rawQuery`, not `execute` — `PRAGMA journal_mode` returns the
+    // resulting mode as a row, and Android's SQLiteDatabase rejects
+    // statements that return results when run through `execSQL`
+    // (`execute`'s underlying call).
+    await db.rawQuery('PRAGMA journal_mode=WAL');
     await db.execute('PRAGMA foreign_keys=ON');
   }
 
