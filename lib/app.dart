@@ -12,6 +12,7 @@ class App extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(syncServiceProvider);
     final authState = ref.watch(authStateProvider);
 
     return MaterialApp(

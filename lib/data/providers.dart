@@ -11,12 +11,24 @@ import 'repositories/navigation_prefs_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/speed_camera_repository.dart';
 import 'services/auth_service.dart';
+import 'services/sync_service.dart';
 
 final firestoreProvider = Provider<FirebaseFirestore>((ref) {
   return FirebaseFirestore.instance;
 });
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+/// Drains locally-queued writes to Firestore and pulls remote changes back
+/// into the local store — see `SyncService`. Started the first time
+/// anything reads this provider (`App` watches it once at the root) and
+/// kept alive for the app's lifetime.
+final syncServiceProvider = Provider<SyncService>((ref) {
+  final service = SyncService();
+  service.start();
+  ref.onDispose(service.dispose);
+  return service;
+});
 
 final authStateProvider = StreamProvider<User?>((ref) {
   return ref.watch(authServiceProvider).authStateChanges;
