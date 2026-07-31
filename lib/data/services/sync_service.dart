@@ -29,24 +29,32 @@ class SyncService {
   final FirebaseFirestore _firestore;
   final Future<Database> _databaseFuture;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  StreamSubscription<void>? _localChangeSubscription;
   bool _draining = false;
 
   CollectionReference<Map<String, dynamic>> get _camerasCollection =>
       _firestore.collection(FirestorePaths.speedCameras);
 
   /// Starts watching connectivity and drains the queue on every transition
-  /// to "online" (plus once immediately, in case it's already online).
+  /// to "online" (plus once immediately, in case it's already online) —
+  /// and also on every local write ([LocalChangeBus]), since a write made
+  /// while already online (e.g. deleting a camera with no connectivity
+  /// change to react to) otherwise has nothing to trigger its own drain
+  /// until the next reconnect or app restart. `drainQueue()` is a cheap
+  /// no-op when the queue is empty, so this is safe to call this often.
   void start() {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
       if (!results.contains(ConnectivityResult.none)) {
         drainQueue();
       }
     });
+    _localChangeSubscription = LocalChangeBus.instance.onChange.listen((_) => drainQueue());
     drainQueue();
   }
 
   void dispose() {
     _connectivitySubscription?.cancel();
+    _localChangeSubscription?.cancel();
   }
 
   /// Replays every pending `sync_queue` row against Firestore, oldest
@@ -61,20 +69,34 @@ class SyncService {
     try {
       final db = await _databaseFuture;
       final dao = SyncQueueDao(db);
-      for (final op in await dao.pending()) {
-        try {
-          await _replay(db, op);
-          await dao.remove(op.rowId);
-          LocalChangeBus.instance.notify();
-        } catch (error, stackTrace) {
-          await dao.markAttempted(op.rowId);
-          developer.log(
-            'sync_queue replay failed for ${op.type.name}/${op.targetId}',
-            error: error,
-            stackTrace: stackTrace,
-            name: 'SyncService',
-          );
+      // Re-checks for newly-enqueued rows after each pass instead of a
+      // single fetch-then-loop — otherwise a write that lands mid-drain
+      // (its own LocalChangeBus tick is dropped by the `_draining` guard
+      // above) would sit unsynced until the next reconnect/local write.
+      while (true) {
+        final pending = await dao.pending();
+        if (pending.isEmpty) break;
+        var succeededAny = false;
+        for (final op in pending) {
+          try {
+            await _replay(db, op);
+            await dao.remove(op.rowId);
+            LocalChangeBus.instance.notify();
+            succeededAny = true;
+          } catch (error, stackTrace) {
+            await dao.markAttempted(op.rowId);
+            developer.log(
+              'sync_queue replay failed for ${op.type.name}/${op.targetId}',
+              error: error,
+              stackTrace: stackTrace,
+              name: 'SyncService',
+            );
+          }
         }
+        // Nothing in this pass went through (e.g. genuinely offline, or an
+        // op that keeps failing) — stop instead of busy-looping forever;
+        // the next connectivity/local-write trigger will retry.
+        if (!succeededAny) break;
       }
     } finally {
       _draining = false;

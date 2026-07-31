@@ -101,6 +101,41 @@ void main() {
     });
   });
 
+  group('SyncService.start', () {
+    test('drains automatically after a local write, with no connectivity change', () async {
+      // connectivity_plus sets up a platform EventChannel as soon as
+      // start() listens to it — needs the test binding initialized, unlike
+      // the other groups here which never touch connectivity_plus.
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final firestore = FakeFirebaseFirestore();
+      final dbFuture = _testDb();
+      final repository = SpeedCameraRepository(database: dbFuture);
+      final syncService = SyncService(firestore: firestore, database: dbFuture);
+      syncService.start();
+      addTearDown(syncService.dispose);
+
+      final id = await repository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9,
+          lng: 12.5,
+          status: SpeedCameraStatus.pending,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+        ),
+      );
+
+      // addCamera's own LocalChangeBus tick (fired synchronously by the
+      // repository write) is what should trigger the drain here — no
+      // explicit drainQueue()/connectivity event, matching a delete/edit
+      // made while the app was already online.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final doc = await firestore.collection('speed_cameras').doc(id).get();
+      expect(doc.exists, isTrue);
+    });
+  });
+
   group('SyncService.pullNear', () {
     test('merges a remote camera into the local store without touching dirty rows', () async {
       final firestore = FakeFirebaseFirestore();
