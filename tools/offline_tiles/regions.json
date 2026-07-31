@@ -1,0 +1,25 @@
+{
+  "//": "Mirrors lib/core/constants/italian_region_bounds.dart — keep both in sync by hand (no codegen shares them). Bounds are minLng,minLat,maxLng,maxLat (osmium's --bbox order).",
+  "regions": [
+    { "name": "Abruzzo", "minLat": 41.6, "maxLat": 42.9, "minLng": 13.0, "maxLng": 14.8 },
+    { "name": "Basilicata", "minLat": 39.9, "maxLat": 41.1, "minLng": 15.3, "maxLng": 16.9 },
+    { "name": "Calabria", "minLat": 37.9, "maxLat": 40.2, "minLng": 15.6, "maxLng": 17.3 },
+    { "name": "Campania", "minLat": 39.9, "maxLat": 41.5, "minLng": 13.7, "maxLng": 15.8 },
+    { "name": "Emilia-Romagna", "minLat": 43.7, "maxLat": 45.1, "minLng": 9.1, "maxLng": 12.8 },
+    { "name": "Friuli-Venezia Giulia", "minLat": 45.5, "maxLat": 46.7, "minLng": 12.3, "maxLng": 13.9 },
+    { "name": "Lazio", "minLat": 40.8, "maxLat": 42.9, "minLng": 11.4, "maxLng": 14.0 },
+    { "name": "Liguria", "minLat": 43.7, "maxLat": 44.7, "minLng": 7.4, "maxLng": 10.1 },
+    { "name": "Lombardia", "minLat": 44.7, "maxLat": 46.7, "minLng": 8.5, "maxLng": 11.5 },
+    { "name": "Marche", "minLat": 42.7, "maxLat": 44.0, "minLng": 12.2, "maxLng": 13.9 },
+    { "name": "Molise", "minLat": 41.4, "maxLat": 42.1, "minLng": 14.1, "maxLng": 15.2 },
+    { "name": "Piemonte", "minLat": 44.0, "maxLat": 46.5, "minLng": 6.6, "maxLng": 9.2 },
+    { "name": "Puglia", "minLat": 39.7, "maxLat": 42.2, "minLng": 14.9, "maxLng": 18.6 },
+    { "name": "Sardegna", "minLat": 38.8, "maxLat": 41.3, "minLng": 8.1, "maxLng": 9.9 },
+    { "name": "Sicilia", "minLat": 36.6, "maxLat": 38.8, "minLng": 11.9, "maxLng": 15.7 },
+    { "name": "Toscana", "minLat": 42.2, "maxLat": 44.5, "minLng": 9.6, "maxLng": 12.4 },
+    { "name": "Trentino-Alto Adige", "minLat": 45.6, "maxLat": 47.1, "minLng": 10.4, "maxLng": 12.5 },
+    { "name": "Umbria", "minLat": 42.3, "maxLat": 43.7, "minLng": 11.9, "maxLng": 13.3 },
+    { "name": "Valle d'Aosta", "minLat": 45.5, "maxLat": 46.0, "minLng": 6.8, "maxLng": 7.9 },
+    { "name": "Veneto", "minLat": 44.7, "maxLat": 46.7, "minLng": 10.6, "maxLng": 13.2 }
+  ]
+}

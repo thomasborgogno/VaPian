@@ -7,12 +7,37 @@ Storage nel path che l'app si aspetta
 [`italianRegions`](../../lib/core/constants/italian_regions.dart) (es.
 `offline_tiles/Lombardia.mbtiles`).
 
-**Questo è un passo operativo, non automatizzato**: va eseguito manualmente
-(o in una pipeline CI dedicata, non presente in questo repo) ogni volta che
-si vuole aggiornare/pubblicare le tile offline. Finché non viene eseguito
-almeno una volta, il download di una regione da Impostazioni → "Mappe
-offline" fallisce con un 404 — comportamento noto e già gestito
-dall'isolamento dei fallimenti per regione in `OfflineMapsSection`.
+## Pipeline automatizzata (GitHub Actions)
+
+[`.github/workflows/offline_tiles.yml`](../../.github/workflows/offline_tiles.yml)
+esegue l'intera pipeline (estratto OSM → ritaglio per regione → Planetiler →
+upload su Storage) sia manualmente (tab *Actions* → *Rebuild offline map
+tiles* → *Run workflow*) sia in automatico il primo di ogni mese.
+
+**Due cose restano da fare manualmente** — non automatizzabili da qui,
+richiedono accesso alla Console Google/Firebase:
+
+1. **Abilitare Firebase Storage** sul progetto (Console Firebase → Storage →
+   "Inizia") — non ancora abilitato di default su `bortho-autovelox` al
+   momento in cui questo documento è stato scritto. Configurare le regole di
+   Storage per la lettura autenticata (coerente con `firestore.rules`).
+
+2. **Creare un service account** con permesso *Storage Object Admin* sul
+   bucket, scaricarne la chiave JSON, e aggiungere due secret al repository
+   GitHub (Settings → Secrets and variables → Actions):
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` — contenuto del file JSON della chiave.
+   - `FIREBASE_STORAGE_BUCKET` — nome del bucket (es.
+     `bortho-autovelox.firebasestorage.app`).
+
+Finché questi due punti non sono a posto, il workflow fallisce nello step
+di autenticazione — gli step di generazione tile (Planetiler) girano
+comunque, quindi è un buon modo per verificare che il resto della pipeline
+funzioni anche prima di aver configurato Storage.
+
+Finché la pipeline non è mai stata eseguita con successo, il download di
+una regione da Impostazioni → "Mappe offline" fallisce con un 404 —
+comportamento noto e già gestito dall'isolamento dei fallimenti per
+regione in `OfflineMapsSection`.
 
 ## Perché self-hosted
 
@@ -24,76 +49,51 @@ di OSM, che vieta il bulk download per uso offline. Le tile *vettoriali*
 per l'uso offline vanno quindi generate da un estratto OSM e ospitate da
 noi, non scaricate in blocco dal server pubblico.
 
-## Prerequisiti
+## Cosa fa la pipeline, passo per passo
 
-- **Java 21+** (richiesto da Planetiler).
-- **~50-100 GB di spazio disco libero** per l'estratto Italia + gli
-  intermedi di Planetiler (l'estratto compresso è ~2 GB, ma il processing
-  richiede molto più spazio temporaneo).
-- **8+ GB di RAM** consigliati per la macchina che esegue Planetiler.
-- Un progetto Firebase con **Firebase Storage abilitato** (Console →
-  Storage → "Inizia") — non ancora abilitato di default su
-  `bortho-autovelox` al momento in cui questo documento è stato scritto.
-- `gsutil` o l'interfaccia web di Firebase Storage per l'upload.
-
-## 1. Scaricare l'estratto OSM Italia
+Lo stesso script che gira in CI ([`build_regions.sh`](build_regions.sh)) è
+eseguibile anche in locale (Linux/macOS con `osmium-tool` e Java 21+
+installati) — utile per debug o per generare le tile senza aspettare CI:
 
 ```bash
-curl -O https://download.geofabrik.de/europe/italy-latest.osm.pbf
-```
+sudo apt-get install -y osmium-tool jq   # o brew install osmium-tool jq su macOS
 
-Aggiornato periodicamente da Geofabrik — rieseguire questo step per
-rigenerare le tile con dati più recenti.
-
-## 2. Generare gli `.mbtiles` con Planetiler
-
-```bash
+curl -L -O https://download.geofabrik.de/europe/italy-latest.osm.pbf
 curl -L -O https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
-java -Xmx8g -jar planetiler.jar --download --area=italy \
-  --output=italy.mbtiles
+
+./build_regions.sh regions.json italy-latest.osm.pbf planetiler.jar out/
 ```
 
-Questo produce **un solo `.mbtiles`** per l'intero paese, con lo schema
-OpenMapTiles di default (strade, edifici, POI, confini amministrativi —
-sufficiente per uno stile stradale leggibile).
-
-## 3. Ritagliare per regione
-
-Planetiler non ha un flag "ritaglia per confine amministrativo" pronto
-all'uso: il modo più semplice è passare un bounding box per regione (vedi
+Per ciascuna delle 20 regioni in [`regions.json`](regions.json) (stessi
+bounding box di
 [`italianRegionBounds`](../../lib/core/constants/italian_region_bounds.dart)
-per i valori già usati per il priming degli autovelox — sono
-approssimativi, non i confini amministrativi esatti, ma sufficienti per
-questo scopo) invece dell'intera Italia:
+— **tenere i due file sincronizzati a mano**, nessun codegen li collega):
 
-```bash
-java -Xmx8g -jar planetiler.jar --download \
-  --bounds="<minLng>,<minLat>,<maxLng>,<maxLat>" \
-  --output="Lombardia.mbtiles"
-```
+1. **`osmium extract --bbox ...`** ritaglia la regione dall'estratto Italia
+   completo (bounding box, non confine amministrativo esatto — sufficiente
+   per questo scopo, coerente con l'approssimazione già accettata per il
+   priming degli autovelox).
+2. **Planetiler** genera l'`.mbtiles` con lo schema OpenMapTiles di default
+   (strade, edifici, POI, confini amministrativi) dal ritaglio.
 
-Ripetere per le 20 regioni (script di comodo, non incluso qui — da scrivere
-quando si esegue davvero questa pipeline, iterando su
-`italianRegionBounds`).
+Poi, in CI, `gsutil -m cp out/*.mbtiles gs://<bucket>/offline_tiles/`
+pubblica tutti i file generati.
 
-## 4. Pubblicare su Firebase Storage
+### Requisiti macchina (per l'esecuzione locale — il runner GitHub Actions li soddisfa già)
 
-```bash
-gsutil cp Lombardia.mbtiles gs://<bucket>/offline_tiles/Lombardia.mbtiles
-```
+- **Java 21+**.
+- **~10-20 GB di spazio disco libero** (l'estratto Italia è ~1 GB
+  compresso; il ritaglio per regione più il processing Planetiler
+  richiedono più spazio, ma alla scala di una singola regione, non
+  dell'intero paese).
+- **4+ GB di RAM** consigliati.
 
-oppure via Console → Storage → upload manuale nel path `offline_tiles/`.
+## Verifica
 
-Le regole di Storage devono permettere la lettura autenticata (coerente con
-le regole già usate per Firestore in `firestore.rules`) — non ancora
-scritte in questo repo, da aggiungere insieme all'abilitazione di Storage.
-
-## 5. Verifica
-
-Dopo l'upload di almeno una regione, in Impostazioni → "Mappe offline"
-selezionarla e premere "Scarica per offline": il download deve completare
-senza errori e, disattivando la rete, la mappa di quella regione deve
-restare visibile — renderizzata dai tile vettoriali locali via
+Dopo che la pipeline ha pubblicato almeno una regione, in Impostazioni →
+"Mappe offline" selezionarla e premere "Scarica per offline": il download
+deve completare senza errori e, disattivando la rete, la mappa di quella
+regione deve restare visibile — renderizzata dai tile vettoriali locali via
 `OfflineVectorTileLayer` (`vector_map_tiles`/`vector_map_tiles_mbtiles`),
 con lo stile "OSM Bright" vendorizzato in
 `assets/map_styles/osm_bright_style.json` (vedi
@@ -101,8 +101,8 @@ con lo stile "OSM Bright" vendorizzato in
 resta il fallback raster online (`TileSourceConfig`).
 
 Nota: questa integrazione **non è stata verificata end-to-end** in nessuna
-sessione — richiede un vero file `.mbtiles` generato con questa pipeline,
-che non esiste ancora. Il codice compila e non introduce regressioni
-quando nessuna regione è scaricata (fallback raster), ma il rendering
-vettoriale vero e proprio va controllato a mano la prima volta che un
-file reale viene scaricato su un device.
+sessione — sia la pipeline CI sia il rendering vettoriale lato app
+richiedono un vero file `.mbtiles`, che non esiste ancora. Il codice
+dell'app compila e non introduce regressioni quando nessuna regione è
+scaricata (fallback raster); il workflow CI non è mai stato eseguito. La
+prima esecuzione di entrambi va controllata a mano.

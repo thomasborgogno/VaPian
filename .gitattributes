@@ -1,0 +1,4 @@
+# Shell scripts must keep LF line endings regardless of the checkout
+# platform's core.autocrlf — a CRLF-mangled script breaks when bash runs it
+# on the Ubuntu GitHub Actions runner (tools/offline_tiles/build_regions.sh).
+*.sh text eol=lf

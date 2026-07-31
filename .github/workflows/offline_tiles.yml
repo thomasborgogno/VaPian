@@ -1,0 +1,77 @@
+name: Rebuild offline map tiles
+
+# Regenerates the self-hosted vector-tile .mbtiles for every Italian region
+# (tools/offline_tiles/) and publishes them to Firebase Storage, where
+# OfflineTileService downloads them from (Settings -> "Mappe offline").
+#
+# Requires two repo secrets this workflow cannot set up on its own:
+#   - FIREBASE_SERVICE_ACCOUNT_JSON: a GCP service account key (JSON) for
+#     the Firebase project, with Storage Object Admin on the target bucket.
+#   - FIREBASE_STORAGE_BUCKET: the bucket name (e.g. bortho-autovelox.firebasestorage.app).
+# See tools/offline_tiles/README.md for how to create both, and for
+# enabling Firebase Storage on the project (also not doable from here).
+on:
+  workflow_dispatch: {}
+  schedule:
+    # 03:00 UTC on the 1st of every month — adjust to taste; OSM data
+    # doesn't need fresher-than-monthly offline tiles for this app.
+    - cron: "0 3 1 * *"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install osmium-tool
+        run: sudo apt-get update && sudo apt-get install -y osmium-tool jq
+
+      # Planetiler's own jar and the small auxiliary datasets it downloads
+      # (water polygons, natural earth) don't need to be fresh — cache them
+      # across runs. The Italy OSM extract itself is downloaded fresh every
+      # run below, since freshness there is the whole point of this job.
+      - name: Cache Planetiler jar and auxiliary data
+        uses: actions/cache@v4
+        with:
+          path: |
+            tiles-work/planetiler.jar
+            tiles-work/data
+          key: planetiler-assets-v1
+
+      - name: Download Italy OSM extract
+        working-directory: tiles-work
+        run: curl -L -o italy-latest.osm.pbf https://download.geofabrik.de/europe/italy-latest.osm.pbf
+
+      - name: Download Planetiler
+        working-directory: tiles-work
+        run: |
+          if [ ! -f planetiler.jar ]; then
+            curl -L -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+          fi
+
+      - name: Build per-region .mbtiles
+        working-directory: tiles-work
+        run: |
+          bash ../tools/offline_tiles/build_regions.sh \
+            ../tools/offline_tiles/regions.json \
+            italy-latest.osm.pbf \
+            planetiler.jar \
+            out
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Publish to Firebase Storage
+        run: |
+          gsutil -m cp tiles-work/out/*.mbtiles "gs://${{ secrets.FIREBASE_STORAGE_BUCKET }}/offline_tiles/"
