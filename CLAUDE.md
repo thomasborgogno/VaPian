@@ -36,8 +36,17 @@ Questi file sono **intenzionalmente non versionati** (percorsi o credenziali spe
 
 4. **`.claude/settings.local.json`**: permessi locali della sessione Claude Code, non versionato di proposito (per-macchina/per-utente).
 
+5. **`maptiler.json`** (opzionale, non esiste nel repo) — API key gratuita per lo stile mappa "OSM Bright" (`lib/core/constants/maptiler_config.dart`/`tile_source_config.dart`). Senza, l'app usa automaticamente CARTO Voyager (nessuna chiave richiesta) come fallback, quindi la mappa funziona comunque. Per abilitare OSM Bright:
+   - Crea una API key gratuita su https://cloud.maptiler.com/account/keys/.
+   - Crea `maptiler.json` nella root del repo:
+     ```json
+     {"MAPTILER_API_KEY": "<la-tua-chiave>"}
+     ```
+   - Builda/lancia con `--dart-define-from-file=maptiler.json` (es. `flutter run --dart-define-from-file=maptiler.json`).
+
 ## Comandi utili
 
 - `flutter analyze` — deve restare pulito ad ogni fase.
 - `flutter test` — repository e modelli sono testati con `fake_cloud_firestore` (nessun emulatore Firebase necessario).
 - `flutter build apk --debug` — verifica end-to-end che Gradle/manifest compilino.
+- `flutter run --dart-define-from-file=maptiler.json` — per vedere lo stile mappa OSM Bright invece del fallback CARTO Voyager (vedi punto 5 sopra).

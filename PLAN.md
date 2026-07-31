@@ -20,7 +20,7 @@ L'obiettivo di questo piano è fissare la struttura di cartelle, lo schema dati,
 
 **Dart (telefono):**
 - State management: **Riverpod** (`flutter_riverpod`) — si integra bene con gli `Stream` di Firestore (`StreamProvider`) e disaccoppia UI da repository, facilitando i test.
-- `firebase_core`, `cloud_firestore`, `firebase_auth`, `google_sign_in`, `location`, `flutter_map` + `vector_map_tiles` (mappa OpenStreetMap, sostituisce `google_maps_flutter` — vedi § Fase OSM offline).
+- `firebase_core`, `cloud_firestore`, `firebase_auth`, `google_sign_in`, `location`, `flutter_map` + `vector_map_tiles` (mappa OpenStreetMap, sostituisce `google_maps_flutter` — vedi § Fase OSM offline). Stile tile online: MapTiler "Bright" (OSM Bright, richiede `MAPTILER_API_KEY` via `--dart-define`) con fallback automatico a CARTO Voyager (keyless) se la chiave non è configurata — `lib/core/constants/tile_source_config.dart`/`maptiler_config.dart`.
 - Da aggiungere in Fase 3: `oauth2` + `http` (OAuth OSM + REST changeset), `flutter_secure_storage` (token OSM cifrato, come richiesto in `features.md` §4).
 
 **Kotlin (auto):**
@@ -114,7 +114,7 @@ Ogni lettura (mappa, navigazione telefono, Android Auto) legge sempre da qui, ma
 | Fase | Contenuto | Stato |
 |---|---|---|
 | **0 — Fondamenta** | Riverpod, struttura cartelle Dart, modelli dati, repository Firestore, regole di sicurezza base, `geo.dart` (haversine + geohash), auth Google/ospite | ✅ Completata |
-| **1 — Mappa & CRUD (telefono)** | `google_maps_flutter`, marker colorati per stato/sorgente, inserimento (long-press/FAB) con limite da preset + direzione, cancellazione propri marker, query "camere in vista" via geohash | ✅ Completata |
+| **1 — Mappa & CRUD (telefono)** | marker colorati per stato/sorgente, inserimento (long-press/FAB) con limite da preset + direzione, cancellazione propri marker, query "camere in vista" via geohash | ✅ Completata |
 | **2 — Impostazioni** | Slider distanza (fissa/dinamica), toggle filtro tolleranza, persistiti su `users/{uid}.settings` | ✅ Completata |
 | **3 — Integrazione OSM (telefono)** | Sync manuale Overpass → Firestore, Smart Reminder 7gg, login OAuth2 OSM, pubblicazione changeset | ✅ Completata |
 | **4 — Blacklist & revisione** | Sottocollezione `ignored_cameras`, banner di conferma su avvio app per elementi `pending` catturati da Android Auto, promozione a `approved` | ✅ Completata |

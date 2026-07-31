@@ -50,10 +50,17 @@ Alcuni file sono **intenzionalmente non versionati** (percorsi/credenziali speci
 
 3. **`google-services.json` / `lib/firebase_options.dart`**: già versionati (i client identifier Firebase non sono segreti: l'accesso è protetto dalle Firestore Security Rules in [`firestore.rules`](firestore.rules) e dalle restrizioni per package/SHA-1 sulla API key), non serve rifare `flutterfire configure`.
 
+4. **`maptiler.json`** (opzionale, da creare, non esiste nel repo): API key gratuita per lo stile mappa "OSM Bright" — senza, l'app usa CARTO Voyager come fallback (nessuna chiave richiesta, mappa comunque funzionante). Per abilitarlo: crea una chiave su https://cloud.maptiler.com/account/keys/, salvala in `maptiler.json`:
+   ```json
+   {"MAPTILER_API_KEY": "<la-tua-chiave>"}
+   ```
+   e lancia con `--dart-define-from-file=maptiler.json` (vedi sotto).
+
 ## Comandi utili
 
 ```bash
 flutter analyze          # deve restare pulito ad ogni fase
 flutter test              # repository e modelli testati con fake_cloud_firestore, nessun emulatore necessario
 flutter build apk --debug # verifica end-to-end che Gradle/manifest compilino
+flutter run --dart-define-from-file=maptiler.json # per usare lo stile OSM Bright invece del fallback CARTO
 ```

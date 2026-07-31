@@ -1,15 +1,15 @@
+import 'maptiler_config.dart';
+
 /// Map tile sourcing for the OpenStreetMap-based map (replacing Google
 /// Maps) — see PLAN.md for the two-tier strategy this backs:
 ///
-/// - **Online default**: CARTO's free "Voyager" raster basemap (OSM data,
-///   different host/policy than the OSM Foundation's own tile server —
-///   see https://github.com/CartoDB/basemap-styles) — used whenever a
-///   region hasn't been downloaded for offline use, or the point being
-///   viewed falls outside every downloaded region. To switch style, change
-///   [onlineRasterUrlTemplate]/[attribution] below to another provider —
-///   e.g. CARTO's own `light_all`/`dark_all` for Positron/Dark Matter, or
-///   `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (no `{s}`/subdomains)
-///   for the plain OSM Foundation style.
+/// - **Online default**: MapTiler's hosted "Bright" raster basemap (the
+///   published equivalent of the classic "OSM Bright" style) when
+///   [MaptilerConfig.isConfigured], falling back to CARTO's free,
+///   keyless "Voyager" basemap otherwise — so the map still works out of
+///   the box on a machine that hasn't set up a MapTiler key yet. Used
+///   whenever a region hasn't been downloaded for offline use, or the
+///   point being viewed falls outside every downloaded region.
 /// - **Offline, per region**: self-hosted vector tiles (Planetiler-built
 ///   `.mbtiles`, one per Italian region, published to Firebase Storage —
 ///   see `tools/offline_tiles/README.md`) downloaded by the user in
@@ -18,17 +18,30 @@
 class TileSourceConfig {
   const TileSourceConfig._();
 
+  /// MapTiler's "Bright" (`bright-v2`) raster tiles — needs
+  /// [MaptilerConfig.apiKey]; see `CLAUDE.md`/`README.md` for how to set
+  /// one up on a new machine.
+  static const String _maptilerBrightUrlTemplate =
+      'https://api.maptiler.com/maps/bright-v2/256/{z}/{x}/{y}.png?key=${MaptilerConfig.apiKey}';
+
   /// CARTO Voyager raster tiles — free for light interactive use, no API
   /// key. `{s}` load-balances across CARTO's own a-d subdomains (unlike the
   /// OSM Foundation's tile server, CARTO's own usage guidance still
   /// recommends this).
-  static const String onlineRasterUrlTemplate =
+  static const String _cartoVoyagerUrlTemplate =
       'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
 
+  static String get onlineRasterUrlTemplate =>
+      MaptilerConfig.isConfigured ? _maptilerBrightUrlTemplate : _cartoVoyagerUrlTemplate;
+
+  /// Only meaningful for the CARTO fallback — MapTiler's endpoint has no
+  /// `{s}` placeholder, so `TileLayer` simply ignores this list when it's
+  /// the active source.
   static const List<String> onlineRasterSubdomains = ['a', 'b', 'c', 'd'];
 
-  /// Required attribution for CARTO basemaps built from OSM data.
-  static const String attribution = '© OpenStreetMap contributors © CARTO';
+  static String get attribution => MaptilerConfig.isConfigured
+      ? '© MapTiler © OpenStreetMap contributors'
+      : '© OpenStreetMap contributors © CARTO';
 
   /// Sent as part of the tile request `User-Agent` — the policy asks for
   /// an identifiable one, not the Dart/Flutter default.

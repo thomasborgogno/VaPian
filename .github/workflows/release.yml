@@ -54,11 +54,15 @@ jobs:
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
+      # Optional: if MAPTILER_API_KEY isn't set as a repo secret, this is
+      # empty and TileSourceConfig falls back to the keyless CARTO style —
+      # the build still succeeds either way.
       - name: Build release APK
         run: |
           flutter build apk --release \
             --build-name="${{ steps.version.outputs.name }}" \
-            --build-number="${{ steps.version.outputs.code }}"
+            --build-number="${{ steps.version.outputs.code }}" \
+            --dart-define=MAPTILER_API_KEY="${{ secrets.MAPTILER_API_KEY }}"
 
       - name: Remove signing material
         if: always()

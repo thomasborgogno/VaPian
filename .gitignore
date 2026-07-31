@@ -49,3 +49,6 @@ app.*.map.json
 
 # Claude Code: per-machine/per-user local overrides, not shared via git
 .claude/settings.local.json
+
+# MapTiler API key for --dart-define-from-file (see CLAUDE.md/README.md) — never commit the key.
+/maptiler.json
