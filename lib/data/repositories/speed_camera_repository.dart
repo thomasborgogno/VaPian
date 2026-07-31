@@ -8,7 +8,7 @@ import '../services/firestore_paths.dart';
 
 class SpeedCameraRepository {
   SpeedCameraRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
 
@@ -40,28 +40,34 @@ class SpeedCameraRepository {
       for (final byId in camerasByPrefix.values) {
         merged.addAll(byId);
       }
-      controller.add(merged.values
-          .where((camera) =>
-              haversineDistanceMeters(lat, lng, camera.lat, camera.lng) <=
-              radiusMeters)
-          .toList());
+      controller.add(
+        merged.values
+            .where(
+              (camera) =>
+                  haversineDistanceMeters(lat, lng, camera.lat, camera.lng) <=
+                  radiusMeters,
+            )
+            .toList(),
+      );
     }
 
     controller = StreamController<List<SpeedCamera>>.broadcast(
       onListen: () {
         for (final prefix in prefixes) {
-          subscriptions.add(_collection
-              .where('geohash', isGreaterThanOrEqualTo: prefix)
-              .where('geohash', isLessThanOrEqualTo: '$prefix')
-              .snapshots()
-              .listen((snapshot) {
-            camerasByPrefix[prefix] = {
-              for (final doc in snapshot.docs)
-                doc.id: SpeedCamera.fromFirestore(doc),
-            };
-            pendingInitial.remove(prefix);
-            if (pendingInitial.isEmpty) emit();
-          }, onError: controller.addError));
+          subscriptions.add(
+            _collection
+                .where('geohash', isGreaterThanOrEqualTo: prefix)
+                .where('geohash', isLessThanOrEqualTo: '$prefix')
+                .snapshots()
+                .listen((snapshot) {
+                  camerasByPrefix[prefix] = {
+                    for (final doc in snapshot.docs)
+                      doc.id: SpeedCamera.fromFirestore(doc),
+                  };
+                  pendingInitial.remove(prefix);
+                  if (pendingInitial.isEmpty) emit();
+                }, onError: controller.addError),
+          );
         }
       },
       onCancel: () async {
@@ -72,22 +78,6 @@ class SpeedCameraRepository {
     );
 
     return controller.stream;
-  }
-
-  /// One-shot cache warm-up, not used for live matching: pulls camera docs
-  /// for the 9-cell coverage of [radiusMeters] into Firestore's local
-  /// persistence, so they're still available if connectivity drops later
-  /// along the route. Fire-and-forget — callers don't need the result, only
-  /// the side effect of populating the offline cache while online.
-  Future<void> prefetchNear(double lat, double lng, double radiusMeters) async {
-    final prefixes = geohashNeighborPrefixes(lat, lng, radiusMeters);
-    await Future.wait([
-      for (final prefix in prefixes)
-        _collection
-            .where('geohash', isGreaterThanOrEqualTo: prefix)
-            .where('geohash', isLessThanOrEqualTo: prefix)
-            .get(),
-    ]);
   }
 
   Future<String> addCamera(SpeedCamera camera) async {
@@ -174,7 +164,8 @@ class SpeedCameraRepository {
   /// untouched by design: an OSM node's real creation date lives in OSM's
   /// own history, not ours.
   Future<void> upsertOsmCamera(SpeedCamera camera) {
-    final data = camera.toMap()..['updatedAt'] = Timestamp.fromDate(DateTime.now());
+    final data = camera.toMap()
+      ..['updatedAt'] = Timestamp.fromDate(DateTime.now());
     return _collection.doc(camera.id).set(data, SetOptions(merge: true));
   }
 }

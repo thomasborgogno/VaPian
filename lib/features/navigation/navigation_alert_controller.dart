@@ -27,20 +27,14 @@ class NavigationAlertController extends ChangeNotifier {
     required BlacklistRepository blacklistRepository,
     NavigationTtsService? ttsService,
     loc.Location? location,
-  })  : _cameraRepository = cameraRepository,
-        _blacklistRepository = blacklistRepository,
-        _tts = ttsService ?? NavigationTtsService(),
-        _location = location ?? loc.Location();
+  }) : _cameraRepository = cameraRepository,
+       _blacklistRepository = blacklistRepository,
+       _tts = ttsService ?? NavigationTtsService(),
+       _location = location ?? loc.Location();
 
   static const double _searchRadiusMeters = 3000;
   static const double _requeryThresholdMeters = 500;
   static const int _locationIntervalMs = 2000;
-
-  /// Wider than [_searchRadiusMeters] on purpose: this only warms up
-  /// Firestore's local persistence a few km ahead/around while online, it
-  /// never feeds the live matching path, so it can be generous without
-  /// affecting alert precision/reactivity.
-  static const double _prefetchRadiusMeters = 8000;
 
   /// Below this speed, the GPS course has no reliable movement vector to
   /// derive from — hold the last known heading instead of following the
@@ -126,7 +120,13 @@ class NavigationAlertController extends ChangeNotifier {
 
     _maybeRequeryCameras(lat, lng);
     final candidate = _pickCandidate(lat, lng, headingDeg);
-    _applyCandidate(candidate, lat: lat, lng: lng, speedKmh: speedKmh, headingDeg: headingDeg);
+    _applyCandidate(
+      candidate,
+      lat: lat,
+      lng: lng,
+      speedKmh: speedKmh,
+      headingDeg: headingDeg,
+    );
   }
 
   /// Re-subscribes to `watchNear` only once the driver has moved far enough
@@ -135,15 +135,17 @@ class NavigationAlertController extends ChangeNotifier {
   void _maybeRequeryCameras(double lat, double lng) {
     final last = _lastQueryPoint;
     if (last != null &&
-        haversineDistanceMeters(last.lat, last.lng, lat, lng) < _requeryThresholdMeters) {
+        haversineDistanceMeters(last.lat, last.lng, lat, lng) <
+            _requeryThresholdMeters) {
       return;
     }
     _lastQueryPoint = (lat: lat, lng: lng);
     _camerasSub?.cancel();
-    _camerasSub = _cameraRepository.watchNear(lat, lng, _searchRadiusMeters).listen((cameras) {
-      _nearbyCameras = cameras;
-    });
-    unawaited(_cameraRepository.prefetchNear(lat, lng, _prefetchRadiusMeters));
+    _camerasSub = _cameraRepository
+        .watchNear(lat, lng, _searchRadiusMeters)
+        .listen((cameras) {
+          _nearbyCameras = cameras;
+        });
   }
 
   SpeedCamera? _pickCandidate(double lat, double lng, double headingDeg) {
@@ -151,7 +153,9 @@ class NavigationAlertController extends ChangeNotifier {
     var bestDistance = double.infinity;
     for (final camera in _nearbyCameras) {
       if (camera.status != SpeedCameraStatus.approved) continue;
-      if (_ignoredIds.contains(camera.id) || _sessionIgnoredIds.contains(camera.id)) continue;
+      if (_ignoredIds.contains(camera.id) ||
+          _sessionIgnoredIds.contains(camera.id))
+        continue;
       if (!isAheadInTravelDirection(
         userLat: lat,
         userLng: lng,
@@ -160,7 +164,12 @@ class NavigationAlertController extends ChangeNotifier {
       )) {
         continue;
       }
-      final distance = haversineDistanceMeters(lat, lng, camera.lat, camera.lng);
+      final distance = haversineDistanceMeters(
+        lat,
+        lng,
+        camera.lat,
+        camera.lng,
+      );
       if (distance < bestDistance) {
         bestDistance = distance;
         best = camera;
@@ -222,7 +231,9 @@ class NavigationAlertController extends ChangeNotifier {
     final distanceText = distanceMeters >= 1000
         ? '${(distanceMeters / 1000).round()} chilometri'
         : '${distanceMeters.round()} metri';
-    final limitText = limitKmh != null ? ' Limite $limitKmh chilometri orari.' : '';
+    final limitText = limitKmh != null
+        ? ' Limite $limitKmh chilometri orari.'
+        : '';
     return 'Ocio! autovelox a $distanceText.$limitText';
   }
 
@@ -253,7 +264,8 @@ class NavigationAlertController extends ChangeNotifier {
   /// phone-side blacklist confirmation once out of navigation mode.
   Future<void> ignoreActiveCamera(String uid) async {
     final camera = _state.camera;
-    if (camera == null || camera.source != SpeedCameraSource.openstreetmap) return;
+    if (camera == null || camera.source != SpeedCameraSource.openstreetmap)
+      return;
     _sessionIgnoredIds.add(camera.id);
     _announcedIds.remove(camera.id);
     _state = _state.copyWith(
