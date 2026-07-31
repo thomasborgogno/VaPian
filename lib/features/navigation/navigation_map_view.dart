@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/constants/italian_region_bounds.dart';
 import '../../core/constants/tile_source_config.dart';
 import '../../core/utils/geo.dart';
 import '../map/current_location_marker.dart';
 import '../map/map_viewport.dart';
 import '../map/marker_style.dart';
+import '../map/offline_vector_tile_layer.dart';
 import '../map/osm_attribution.dart';
 import '../map/speed_camera_marker_icons.dart';
 import 'navigation_alert_controller.dart';
@@ -31,10 +33,16 @@ class NavigationMapView extends StatefulWidget {
     super.key,
     required this.controller,
     required this.amoled,
+    this.downloadedRegions = const {},
   });
 
   final NavigationAlertController controller;
   final bool amoled;
+
+  /// Regions with local vector tiles available offline
+  /// (`downloadedRegionsProvider`) — passed in rather than read directly
+  /// since this widget isn't itself a `ConsumerWidget`.
+  final Set<String> downloadedRegions;
 
   @override
   State<NavigationMapView> createState() => _NavigationMapViewState();
@@ -175,6 +183,18 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   Widget build(BuildContext context) {
     final lat = widget.controller.currentLat ?? MapViewport.initial.latitude;
     final lng = widget.controller.currentLng ?? MapViewport.initial.longitude;
+    final region = regionContaining(lat, lng);
+    final activeRegion =
+        (region != null && widget.downloadedRegions.contains(region)) ? region : null;
+
+    Widget baseLayer = activeRegion != null
+        ? OfflineVectorTileLayer(key: ValueKey(activeRegion), region: activeRegion)
+        : TileLayer(
+            urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
+            subdomains: TileSourceConfig.onlineRasterSubdomains,
+            userAgentPackageName: TileSourceConfig.userAgentPackageName,
+          );
+    if (widget.amoled) baseLayer = _darkened(baseLayer);
 
     final map = FlutterMap(
       mapController: _mapController,
@@ -184,12 +204,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
         interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
       ),
       children: [
-        TileLayer(
-          urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
-          subdomains: TileSourceConfig.onlineRasterSubdomains,
-          userAgentPackageName: TileSourceConfig.userAgentPackageName,
-          tileBuilder: widget.amoled ? _darkenedTileBuilder : null,
-        ),
+        baseLayer,
         CurrentLocationMarkerLayer(position: LatLng(lat, lng)),
         MarkerLayer(markers: _cameraMarkers),
         const OsmAttribution(),
@@ -200,11 +215,11 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   }
 
   /// Approximates the old AMOLED `GoogleMap` JSON style (dark roads on a
-  /// near-black background) by darkening/desaturating the raster OSM
-  /// tiles — a plain color-matrix filter, not a true custom dark basemap
-  /// (that needs vector tiles with their own dark theme, planned once the
-  /// offline vector tiles land).
-  Widget _darkenedTileBuilder(BuildContext context, Widget tileWidget, TileImage tile) {
+  /// near-black background) by darkening/desaturating whichever base map
+  /// layer is active — a plain color-matrix filter, not a true custom dark
+  /// basemap (that needs its own dark theme, same idea as
+  /// `OfflineMapTheme` but not built yet).
+  Widget _darkened(Widget layer) {
     return ColorFiltered(
       colorFilter: const ColorFilter.matrix(<double>[
         0.25, 0, 0, 0, 0,
@@ -212,7 +227,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
         0, 0, 0.25, 0, 0,
         0, 0, 0, 1, 0,
       ]),
-      child: tileWidget,
+      child: layer,
     );
   }
 }

@@ -79,6 +79,22 @@ final pendingSyncCountProvider = StreamProvider<int>((ref) async* {
   yield* LocalChangeBus.instance.onChange.asyncMap((_) => query());
 });
 
+/// Regions the user selected for offline use ([UserSettings.offlineMapRegions])
+/// that actually have their `.mbtiles` downloaded locally — the subset
+/// `OfflineVectorTileLayer`/`MapScreen` treat as "render from local vector
+/// tiles instead of the online raster fallback". Selecting a region only
+/// queues it; `OfflineMapsSection` invalidates this provider once the
+/// download actually completes.
+final downloadedRegionsProvider = FutureProvider<Set<String>>((ref) async {
+  final regions = ref.watch(userSettingsProvider).value?.offlineMapRegions ?? const [];
+  final tileService = ref.watch(offlineTileServiceProvider);
+  final downloaded = <String>{};
+  for (final region in regions) {
+    if (await tileService.isDownloaded(region)) downloaded.add(region);
+  }
+  return downloaded;
+});
+
 /// IDs of cameras the current user has chosen to hide (features.md 2.1
 /// "Ignora Velox di OSM").  Returns an empty set when not signed in.
 final ignoredCameraIdsProvider = StreamProvider<Set<String>>((ref) {

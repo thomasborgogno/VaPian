@@ -93,8 +93,16 @@ scritte in questo repo, da aggiungere insieme all'abilitazione di Storage.
 Dopo l'upload di almeno una regione, in Impostazioni → "Mappe offline"
 selezionarla e premere "Scarica per offline": il download deve completare
 senza errori e, disattivando la rete, la mappa di quella regione deve
-restare visibile (tile vettoriali via
-[`vector_map_tiles_mbtiles`](https://pub.dev/packages/vector_map_tiles_mbtiles) —
-integrazione app-side ancora da collegare al file scaricato, si appoggia
-per ora al fallback raster online per la resa a schermo; vedi
-`OfflineTileService`/`OfflineMapsSection`).
+restare visibile — renderizzata dai tile vettoriali locali via
+`OfflineVectorTileLayer` (`vector_map_tiles`/`vector_map_tiles_mbtiles`),
+con lo stile "OSM Bright" vendorizzato in
+`assets/map_styles/osm_bright_style.json` (vedi
+`lib/features/map/offline_map_theme.dart`). Fuori da una regione scaricata,
+resta il fallback raster online (`TileSourceConfig`).
+
+Nota: questa integrazione **non è stata verificata end-to-end** in nessuna
+sessione — richiede un vero file `.mbtiles` generato con questa pipeline,
+che non esiste ancora. Il codice compila e non introduce regressioni
+quando nessuna regione è scaricata (fallback raster), ma il rendering
+vettoriale vero e proprio va controllato a mano la prima volta che un
+file reale viene scaricato su un device.

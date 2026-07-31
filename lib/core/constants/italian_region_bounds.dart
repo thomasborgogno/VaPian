@@ -41,3 +41,17 @@ const Map<String, RegionBounds> italianRegionBounds = {
   "Valle d'Aosta": RegionBounds(45.5, 46.0, 6.8, 7.9),
   'Veneto': RegionBounds(44.7, 46.7, 10.6, 13.2),
 };
+
+/// The region whose bounding box contains ([lat], [lng]), if any — used to
+/// decide whether the map should render from a downloaded region's local
+/// vector tiles instead of the online raster fallback (`OfflineVectorTileLayer`).
+/// A point near a regional border can fall inside more than one box; the
+/// first match (map iteration order, same as [italianRegionBounds]'s
+/// declaration order) wins — acceptable given these boxes are already only
+/// approximate.
+String? regionContaining(double lat, double lng) {
+  for (final entry in italianRegionBounds.entries) {
+    if (entry.value.contains(lat, lng)) return entry.key;
+  }
+  return null;
+}

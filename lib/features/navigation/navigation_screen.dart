@@ -121,6 +121,7 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
     if (settings != null) _controller.updateSettings(settings);
     final ignoredIds = ref.watch(ignoredCameraIdsProvider).value;
     if (ignoredIds != null) _controller.updateIgnoredIds(ignoredIds);
+    final downloadedRegions = ref.watch(downloadedRegionsProvider).value ?? const {};
 
     return Scaffold(
       body: _starting
@@ -129,8 +130,16 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
               fit: StackFit.expand,
               children: [
                 switch (_variant) {
-                  _NavigationVariant.map => NavigationMapView(controller: _controller, amoled: false),
-                  _NavigationVariant.amoled => NavigationMapView(controller: _controller, amoled: true),
+                  _NavigationVariant.map => NavigationMapView(
+                      controller: _controller,
+                      amoled: false,
+                      downloadedRegions: downloadedRegions,
+                    ),
+                  _NavigationVariant.amoled => NavigationMapView(
+                      controller: _controller,
+                      amoled: true,
+                      downloadedRegions: downloadedRegions,
+                    ),
                   _NavigationVariant.speed => NavigationSpeedView(controller: _controller),
                 },
                 NavigationAlertCard(

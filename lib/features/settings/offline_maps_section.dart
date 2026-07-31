@@ -73,6 +73,12 @@ class _OfflineMapsSectionState extends ConsumerState<OfflineMapsSection> {
       }
     }
 
+    // The map screens only pick a region's local vector tiles when this
+    // provider reports it as downloaded — invalidate it now that (some of)
+    // the downloads just completed, rather than waiting for something else
+    // to trigger a refresh.
+    ref.invalidate(downloadedRegionsProvider);
+
     if (mounted) {
       setState(() {
         _isDownloading = false;
