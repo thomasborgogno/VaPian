@@ -41,6 +41,11 @@ dependencies:
   firebase_auth: ^6.5.4
   google_sign_in: ^7.2.0
   google_maps_flutter: ^2.17.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  vector_map_tiles: ^8.0.0
+  vector_map_tiles_mbtiles: ^1.2.0
+  path_provider: ^2.1.5
   http: ^1.6.0
   flutter_web_auth_2: ^5.0.3
   crypto: ^3.0.7
