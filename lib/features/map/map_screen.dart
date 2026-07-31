@@ -960,6 +960,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
+                subdomains: TileSourceConfig.onlineRasterSubdomains,
                 userAgentPackageName: TileSourceConfig.userAgentPackageName,
               ),
               if (_myLocation != null)

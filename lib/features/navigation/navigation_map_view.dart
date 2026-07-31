@@ -186,6 +186,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
       children: [
         TileLayer(
           urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
+          subdomains: TileSourceConfig.onlineRasterSubdomains,
           userAgentPackageName: TileSourceConfig.userAgentPackageName,
           tileBuilder: widget.amoled ? _darkenedTileBuilder : null,
         ),
