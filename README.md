@@ -19,7 +19,8 @@ La specifica funzionale completa è in [`features.md`](features.md); le decision
 
 ## Architettura — decisioni chiave
 
-- **Nessun database locale dedicato** (no sqflite/Isar): Cloud Firestore fa da cache offline sia lato Dart che lato Kotlin.
+- **Database locale SQLite condiviso** (`sqflite`/`SQLiteOpenHelper`, stesso file `autovelox_shared.db`): ogni lettura passa da lì, le scritture ci vanno subito e si sincronizzano con Firestore quando torna la rete — vedi `PLAN.md` § Fase OSM/offline.
+- **OpenStreetMap** (`flutter_map`) per il rendering mappa, con tile vettoriali self-hosted scaricabili per regione per l'uso offline.
 - **Native-first per Android Auto**: tutta la logica di guida in tempo reale (GPS, prossimità, TTS, audio focus, schermate auto) vive in Kotlin nativo, non in Dart/Method Channel. Le due parti comunicano scrivendo/leggendo le stesse collezioni Firestore, non via bridge.
 - **Autenticazione**: Google Sign-In o accesso come ospite (Firebase Anonymous Auth); un ospite che poi accede con Google viene collegato (`linkWithCredential`), non sostituito.
 - **⚠️ OpenStreetMap punta alla produzione**, non a una sandbox: login OAuth2 e pubblicazione changeset scrivono dati reali su `www.openstreetmap.org`.
