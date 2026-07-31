@@ -37,6 +37,9 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
+      - name: Create working directory
+        run: mkdir -p tiles-work
+
       # Planetiler's own jar and the small auxiliary datasets it downloads
       # (water polygons, natural earth) don't need to be fresh — cache them
       # across runs. Each zone's OSM extract is downloaded fresh every run
