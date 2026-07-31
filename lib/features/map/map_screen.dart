@@ -27,6 +27,7 @@ import 'filter_sheet.dart';
 import 'map_style_config.dart';
 import 'map_viewport.dart';
 import 'marker_style.dart';
+import 'osm_attribution.dart';
 import 'pending_cameras_banner.dart';
 import 'pending_review_sheet.dart';
 import 'speed_camera_marker_icons.dart';
@@ -124,7 +125,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// known, a separately-rotating arrow (`rotate: false`, so it turns with
   /// the map — the ground-plane behavior its compass-bearing rotation
   /// needs). See `SpeedCameraMarkerIcons`'s class doc.
-  List<Marker> _buildMarkersForCamera(SpeedCamera camera, {bool grayedOut = false}) {
+  List<Marker> _buildMarkersForCamera(
+    SpeedCamera camera, {
+    bool grayedOut = false,
+  }) {
     final color = grayedOut ? speedCameraGray : markerColorFor(camera);
     final position = LatLng(camera.lat, camera.lng);
 
@@ -148,7 +152,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           alignment: Alignment.topCenter,
           width: SpeedCameraArrowMarker.width,
           height: SpeedCameraArrowMarker.height,
-          child: SpeedCameraArrowMarker(color: color, rotationDegrees: travelDirection.toDouble()),
+          child: SpeedCameraArrowMarker(
+            color: color,
+            rotationDegrees: travelDirection.toDouble(),
+          ),
         ),
       Marker(
         point: position,
@@ -221,7 +228,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final bounds = _controller.camera.visibleBounds;
     final centerLat = (bounds.north + bounds.south) / 2;
     final centerLng = (bounds.east + bounds.west) / 2;
-    final radiusMeters = haversineDistanceMeters(centerLat, centerLng, bounds.north, bounds.east);
+    final radiusMeters = haversineDistanceMeters(
+      centerLat,
+      centerLng,
+      bounds.north,
+      bounds.east,
+    );
 
     // Skip the re-query if the new center is still well inside the already-
     // prefetched area (prefetch = 3× the visible radius).  We only issue a new
@@ -229,10 +241,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // to less than one visible-radius worth of margin.
     final last = _lastQueriedViewport;
     if (last != null) {
-      final movedMeters = haversineDistanceMeters(last.latitude, last.longitude, centerLat, centerLng);
+      final movedMeters = haversineDistanceMeters(
+        last.latitude,
+        last.longitude,
+        centerLat,
+        centerLng,
+      );
       // Prefetched radius = last.radiusMeters * 3; visible radius = radiusMeters.
       // Remaining buffer = prefetched – moved – visible.  Re-query when < 0.
-      final remainingBuffer = last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
+      final remainingBuffer =
+          last.radiusMeters * (viewportPrefetchMultiplier - 1) - movedMeters;
       if (remainingBuffer >= radiusMeters) return;
     }
 
@@ -243,7 +261,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
     _lastQueriedViewport = newViewport;
     ref.read(mapViewportProvider.notifier).update(newViewport);
-    ref.read(syncServiceProvider).pullNear(centerLat, centerLng, radiusMeters * viewportPrefetchMultiplier);
+    ref
+        .read(syncServiceProvider)
+        .pullNear(
+          centerLat,
+          centerLng,
+          radiusMeters * viewportPrefetchMultiplier,
+        );
   }
 
   void _onPositionChanged(MapCamera camera, bool hasGesture) {
@@ -290,10 +314,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// [_screenDeltaToLatLngDelta] (already used for drag math) to convert
   /// the needed on-screen shift into a lat/lng offset.
   void _centerAboveBottomSheet(LatLng position, GlobalKey sheetKey) {
-    final sheetHeight = (sheetKey.currentContext?.findRenderObject() as RenderBox?)?.size.height;
+    final sheetHeight =
+        (sheetKey.currentContext?.findRenderObject() as RenderBox?)
+            ?.size
+            .height;
     if (sheetHeight == null || sheetHeight <= 0) return;
-    final delta = _screenDeltaToLatLngDelta(Offset(0, sheetHeight / 2), position.latitude);
-    final target = LatLng(position.latitude + delta.dLat, position.longitude + delta.dLng);
+    final delta = _screenDeltaToLatLngDelta(
+      Offset(0, sheetHeight / 2),
+      position.latitude,
+    );
+    final target = LatLng(
+      position.latitude + delta.dLat,
+      position.longitude + delta.dLng,
+    );
     _controller.move(target, _currentZoom);
   }
 
@@ -304,7 +337,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (_draft != null) return;
 
     final uid = ref.read(authStateProvider).value?.uid;
-    final isOwner = existing != null && uid != null && existing.createdBy == uid;
+    final isOwner =
+        existing != null && uid != null && existing.createdBy == uid;
 
     final isUserReportNotPending =
         existing != null &&
@@ -378,7 +412,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           onSave: readOnly ? null : _saveDraft,
           limitEditable: !readOnly,
           onCancel: _closeDraft,
-          onDelete: (_draft!.isNew || isOsmSourced || readOnly) ? null : _deleteDraft,
+          onDelete: (_draft!.isNew || isOsmSourced || readOnly)
+              ? null
+              : _deleteDraft,
           onApprove: (isPending && !readOnly) ? _approveDraft : null,
           onPublishToOsm: _draft!.canPublishToOsm ? _publishToOsm : null,
           onSaveOsmEdit: _draft!.canEditOsm ? _saveOsmEdit : null,
@@ -387,9 +423,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           currentDirection: _draft!.direction,
           hasKnownDirection: _draft!.hasKnownDirection,
           directionReversed: _draft!.directionReversed,
-          onDirectionReversedChanged:
-              _draft!.hasKnownDirection ? _onDirectionReversedPreview : null,
-          onSaveReversedOnly: (readOnly && _draft!.hasKnownDirection) ? _saveReversedOnly : null,
+          onDirectionReversedChanged: _draft!.hasKnownDirection
+              ? _onDirectionReversedPreview
+              : null,
+          onSaveReversedOnly: (readOnly && _draft!.hasKnownDirection)
+              ? _saveReversedOnly
+              : null,
           isIgnored: isIgnored,
           onIgnore: ignoreCallback,
           onUnignore: unignoreCallback,
@@ -562,10 +601,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final draft = _draft;
     final id = draft?.existingId;
     if (draft == null || id == null) return;
-    await ref.read(speedCameraRepositoryProvider).updateDirectionReversed(
-      id,
-      draft.directionReversed,
-    );
+    await ref
+        .read(speedCameraRepositoryProvider)
+        .updateDirectionReversed(id, draft.directionReversed);
     _closeDraft();
   }
 
@@ -603,15 +641,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     try {
       final direction = draft.direction.round();
-      await OsmEditService().updateNode(nodeId, limit: limit, direction: direction);
+      await OsmEditService().updateNode(
+        nodeId,
+        limit: limit,
+        direction: direction,
+      );
       final existingId = draft.existingId;
       if (existingId != null) {
-        await ref.read(speedCameraRepositoryProvider).updateCamera(
-          existingId,
-          limit: limit,
-          direction: direction,
-          directionReversed: draft.directionReversed,
-        );
+        await ref
+            .read(speedCameraRepositoryProvider)
+            .updateCamera(
+              existingId,
+              limit: limit,
+              direction: direction,
+              directionReversed: draft.directionReversed,
+            );
       }
       _closeDraft();
       if (mounted) {
@@ -729,7 +773,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final uid = ref.read(authStateProvider).value?.uid;
     final isOwner = uid != null && camera.createdBy == uid;
     if (isOwner) {
-      await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+      await _startDraft(
+        position: LatLng(camera.lat, camera.lng),
+        existing: camera,
+      );
       return;
     }
     // Cameras with a live OpenStreetMap node (Overpass-imported, or a user
@@ -737,7 +784,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // directly on OSM once the user is signed in (features.md 4).
     if (camera.osmId != null && await OsmAuthService().isLinked()) {
       if (!mounted) return;
-      await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+      await _startDraft(
+        position: LatLng(camera.lat, camera.lng),
+        existing: camera,
+      );
       return;
     }
     // Any camera with a known direction opens the (read-only, aside from
@@ -745,7 +795,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // sheet instead of the plain details one, so that toggle stays
     // reachable regardless of ownership/OSM login.
     if (camera.direction != null) {
-      await _startDraft(position: LatLng(camera.lat, camera.lng), existing: camera);
+      await _startDraft(
+        position: LatLng(camera.lat, camera.lng),
+        existing: camera,
+      );
       return;
     }
     if (mounted) await _showReadOnlyDetails(camera);
@@ -793,7 +846,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _onNavigationModePressed() {
     if (_draft != null) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => const NavigationScreen()));
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const NavigationScreen()));
   }
 
   void _showFilterSheet() {
@@ -859,7 +914,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           children: [
             Image.asset('assets/icon/foreground.png', width: 32, height: 32),
             const SizedBox(width: 8),
-            const Text('VaPian! - Maps'),
+            const Text('VaPian!'),
           ],
         ),
         actions: [
@@ -907,9 +962,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 urlTemplate: TileSourceConfig.onlineRasterUrlTemplate,
                 userAgentPackageName: TileSourceConfig.userAgentPackageName,
               ),
-              if (_myLocation != null) CurrentLocationMarkerLayer(position: _myLocation!),
+              if (_myLocation != null)
+                CurrentLocationMarkerLayer(position: _myLocation!),
               MarkerLayer(markers: markers),
-              const SimpleAttributionWidget(source: Text(TileSourceConfig.attribution)),
+              const OsmAttribution(),
             ],
           ),
           if (draft != null && _draftScreenPosition != null)

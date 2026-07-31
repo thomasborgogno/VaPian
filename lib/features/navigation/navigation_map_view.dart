@@ -9,6 +9,7 @@ import '../../core/utils/geo.dart';
 import '../map/current_location_marker.dart';
 import '../map/map_viewport.dart';
 import '../map/marker_style.dart';
+import '../map/osm_attribution.dart';
 import '../map/speed_camera_marker_icons.dart';
 import 'navigation_alert_controller.dart';
 
@@ -190,7 +191,7 @@ class _NavigationMapViewState extends State<NavigationMapView> {
         ),
         CurrentLocationMarkerLayer(position: LatLng(lat, lng)),
         MarkerLayer(markers: _cameraMarkers),
-        const SimpleAttributionWidget(source: Text(TileSourceConfig.attribution)),
+        const OsmAttribution(),
       ],
     );
 
