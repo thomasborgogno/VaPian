@@ -64,6 +64,23 @@ class IgnoredCamerasTable {
   static const String deleted = 'deleted';
 }
 
+/// Local mirror of `users/{uid}/queued_ignores/{cameraId}` — cameras tapped
+/// "Ignora" from Android Auto, awaiting phone-side confirmation (see
+/// `QueuedIgnore`, `PendingReviewSheet`). Written locally by the native
+/// Kotlin side while driving, read by the phone UI, both via this table
+/// instead of a direct Firestore listener, so the review sheet works
+/// offline too.
+class QueuedIgnoresTable {
+  const QueuedIgnoresTable._();
+
+  static const String name = 'queued_ignores';
+  static const String uid = 'uid';
+  static const String cameraId = 'camera_id';
+  static const String queuedAt = 'queued_at';
+  static const String dirty = 'dirty';
+  static const String deleted = 'deleted';
+}
+
 /// Operations recorded locally (by either the Dart UI or, natively, the
 /// Android Auto "Ignora"/"Segnala" buttons) and replayed against Firestore
 /// once connectivity returns — see `SyncService`.
@@ -74,6 +91,11 @@ class SyncQueueTable {
   static const String rowId = 'id';
   static const String opType = 'op_type';
 
+  /// The `speed_cameras`/`ignored_cameras`/`queued_ignores` row this op
+  /// targets — indexed so a repeated edit to the same id can coalesce with
+  /// an already-pending op instead of piling up duplicates.
+  static const String targetId = 'target_id';
+
   /// JSON-encoded payload, shape depends on [opType] — see
   /// `SyncQueueOp` (`lib/data/local/sync_queue_op.dart`) for the encoder
   /// used by the Dart side.
@@ -81,6 +103,10 @@ class SyncQueueTable {
   static const String createdAt = 'created_at';
   static const String attempts = 'attempts';
 }
+
+/// Shorthand for `(await AppDatabase.instance()).db`, used by repositories
+/// that don't need anything else from [AppDatabase].
+Future<Database> sharedDatabase() async => (await AppDatabase.instance()).db;
 
 /// Opens (or creates) the shared SQLite database described above.
 ///
@@ -125,10 +151,15 @@ class AppDatabase {
   /// `sqflite_common_ffi`'s `databaseFactory` to be set by the caller (see
   /// `test/local/sqlite_test_setup.dart`).
   static Future<AppDatabase> openInMemoryForTest() async {
+    // `singleInstance: false` is required here: sqflite otherwise caches
+    // one connection per path, and every call uses the same literal
+    // `:memory:` path — without this, all "isolated" test databases would
+    // actually be the same shared instance, leaking rows between tests.
     final db = await openDatabase(
       inMemoryDatabasePath,
       version: kSharedDatabaseVersion,
       onCreate: (db, version) => createSchema(db),
+      singleInstance: false,
     );
     return AppDatabase._(db);
   }
@@ -178,13 +209,29 @@ class AppDatabase {
     ''');
 
     await db.execute('''
+      CREATE TABLE ${QueuedIgnoresTable.name} (
+        ${QueuedIgnoresTable.uid} TEXT NOT NULL,
+        ${QueuedIgnoresTable.cameraId} TEXT NOT NULL,
+        ${QueuedIgnoresTable.queuedAt} INTEGER NOT NULL,
+        ${QueuedIgnoresTable.dirty} INTEGER NOT NULL DEFAULT 0,
+        ${QueuedIgnoresTable.deleted} INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (${QueuedIgnoresTable.uid}, ${QueuedIgnoresTable.cameraId})
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE ${SyncQueueTable.name} (
         ${SyncQueueTable.rowId} INTEGER PRIMARY KEY AUTOINCREMENT,
         ${SyncQueueTable.opType} TEXT NOT NULL,
+        ${SyncQueueTable.targetId} TEXT NOT NULL,
         ${SyncQueueTable.payload} TEXT NOT NULL,
         ${SyncQueueTable.createdAt} INTEGER NOT NULL,
         ${SyncQueueTable.attempts} INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await db.execute(
+      'CREATE INDEX idx_sync_queue_op_target ON ${SyncQueueTable.name}'
+      '(${SyncQueueTable.opType}, ${SyncQueueTable.targetId})',
+    );
   }
 }

@@ -1,31 +1,32 @@
 import 'dart:convert';
 
-/// Kind of write recorded in `sync_queue`, replayed by [SyncService] against
-/// the matching `SpeedCameraRepository`/`BlacklistRepository` Firestore call
-/// once connectivity returns. One value per remote write the app can make
-/// while offline.
+/// Kind of local change recorded in `sync_queue` and replayed by
+/// [SyncService] against Firestore once connectivity returns.
+///
+/// Deliberately entity-level rather than one value per repository method
+/// (`addCamera`/`updateStatus`/`updateCamera`/... all become
+/// [upsertCamera]): the local `speed_cameras`/`ignored_cameras` row already
+/// holds the current state for its id, so replaying just means "push
+/// whatever is in the local row for this id right now" — which also makes
+/// repeated edits to the same id naturally coalesce into one pending op
+/// (see `_enqueueUpsert`/`_enqueueDelete` in the repositories).
 enum SyncOpType {
-  addCamera,
-  updateStatus,
-  updateCamera,
-  updateDirectionReversed,
+  upsertCamera,
   deleteCamera,
-  ignoreCamera,
-  unignoreCamera,
-  queueIgnore;
+  upsertIgnoredCamera,
+  deleteIgnoredCamera,
+  queueIgnore,
+  dismissQueuedIgnore;
 
   static SyncOpType fromValue(String value) => SyncOpType.values.byName(value);
 }
 
 /// A pending `sync_queue` row, decoded from its `op_type`/`payload` columns.
-///
-/// [payload] is intentionally a raw `Map<String, dynamic>` (not a typed
-/// class per op) — each op only needs a handful of primitive fields and
-/// [SyncService] already knows, from [type], which ones to expect.
 class SyncQueueOp {
   const SyncQueueOp({
     required this.rowId,
     required this.type,
+    required this.targetId,
     required this.payload,
     required this.createdAt,
     required this.attempts,
@@ -35,6 +36,7 @@ class SyncQueueOp {
     return SyncQueueOp(
       rowId: row['id'] as int,
       type: SyncOpType.fromValue(row['op_type'] as String),
+      targetId: row['target_id'] as String,
       payload: jsonDecode(row['payload'] as String) as Map<String, dynamic>,
       createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
       attempts: row['attempts'] as int,
@@ -43,6 +45,10 @@ class SyncQueueOp {
 
   final int rowId;
   final SyncOpType type;
+  final String targetId;
+
+  /// Extra fields the plain [targetId] doesn't carry — `{'uid': ...}` for
+  /// per-user ops (ignored/queued cameras), empty for camera ops.
   final Map<String, dynamic> payload;
   final DateTime createdAt;
   final int attempts;

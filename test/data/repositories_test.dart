@@ -1,4 +1,6 @@
 import 'package:autovelox_app/core/utils/geo.dart';
+import 'package:autovelox_app/data/local/app_database.dart';
+import 'package:autovelox_app/data/local/sync_queue_dao.dart';
 import 'package:autovelox_app/data/models/speed_camera.dart';
 import 'package:autovelox_app/data/models/user_settings.dart';
 import 'package:autovelox_app/data/repositories/blacklist_repository.dart';
@@ -6,15 +8,19 @@ import 'package:autovelox_app/data/repositories/settings_repository.dart';
 import 'package:autovelox_app/data/repositories/speed_camera_repository.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite/sqflite.dart';
+
+/// Local-first repositories read/write an isolated in-memory SQLite
+/// database per test — see `test/flutter_test_config.dart` for the FFI
+/// factory setup this relies on.
+Future<Database> _testDb() async => (await AppDatabase.openInMemoryForTest()).db;
 
 void main() {
   group('SpeedCameraRepository', () {
-    late FakeFirebaseFirestore firestore;
     late SpeedCameraRepository repository;
 
-    setUp(() {
-      firestore = FakeFirebaseFirestore();
-      repository = SpeedCameraRepository(firestore: firestore);
+    setUp(() async {
+      repository = SpeedCameraRepository(database: _testDb());
     });
 
     test('addCamera then watchNear returns the camera within radius', () async {
@@ -67,8 +73,8 @@ void main() {
 
       // The camera sits right at the query center (distance 0, always within
       // radius) but its geohash belongs to a neighboring cell -- exactly the
-      // case a single-cell query silently drops, since it never asks
-      // Firestore for that prefix at all.
+      // case a single-cell query silently drops, since it never asks for
+      // that prefix at all.
       await repository.addCamera(
         SpeedCamera(
           id: '',
@@ -85,7 +91,7 @@ void main() {
       expect(cameras, hasLength(1));
     });
 
-    test('deleteCamera removes the document', () async {
+    test('deleteCamera hides it from watchNear', () async {
       final id = await repository.addCamera(
         const SpeedCamera(
           id: '',
@@ -101,8 +107,8 @@ void main() {
 
       await repository.deleteCamera(id);
 
-      final doc = await firestore.collection('speed_cameras').doc(id).get();
-      expect(doc.exists, isFalse);
+      final cameras = await repository.watchNear(41.9028, 12.4964, 5000).first;
+      expect(cameras, isEmpty);
     });
 
     test('updateStatus promotes pending to approved', () async {
@@ -121,8 +127,8 @@ void main() {
 
       await repository.updateStatus(id, SpeedCameraStatus.approved);
 
-      final doc = await firestore.collection('speed_cameras').doc(id).get();
-      expect(doc.data()!['status'], 'approved');
+      final cameras = await repository.watchPendingOwn('uid1').first;
+      expect(cameras, isEmpty);
     });
 
     test('watchPendingOwn returns only pending user cameras for the given uid', () async {
@@ -182,9 +188,9 @@ void main() {
       await repository.upsertOsmCamera(first);
       await repository.upsertOsmCamera(first.copyWith(limit: 70));
 
-      final snapshot = await firestore.collection('speed_cameras').get();
-      expect(snapshot.docs, hasLength(1));
-      expect(snapshot.docs.single.data()['limit'], 70);
+      final camera = await repository.getById('osm_123');
+      expect(camera, isNotNull);
+      expect(camera!.limit, 70);
     });
 
     test('updateDirectionReversed flips only that field, for any source', () async {
@@ -201,9 +207,32 @@ void main() {
 
       await repository.updateDirectionReversed('osm_9', true);
 
-      final snapshot = await firestore.collection('speed_cameras').doc('osm_9').get();
-      expect(snapshot.data()!['directionReversed'], isTrue);
-      expect(snapshot.data()!['direction'], 90);
+      final updated = await repository.getById('osm_9');
+      expect(updated, isNotNull);
+      expect(updated!.directionReversed, isTrue);
+      expect(updated.direction, 90);
+    });
+
+    test('addCamera then updateStatus coalesce into a single pending sync op', () async {
+      final dbFuture = _testDb();
+      final localRepository = SpeedCameraRepository(database: dbFuture);
+
+      final id = await localRepository.addCamera(
+        const SpeedCamera(
+          id: '',
+          lat: 41.9,
+          lng: 12.5,
+          status: SpeedCameraStatus.pending,
+          source: SpeedCameraSource.user,
+          geohash: 'sr2yk1z',
+          createdBy: 'uid1',
+        ),
+      );
+      await localRepository.updateStatus(id, SpeedCameraStatus.approved);
+
+      final pending = await SyncQueueDao(await dbFuture).pending();
+      expect(pending, hasLength(1));
+      expect(pending.single.targetId, id);
     });
   });
 
@@ -244,9 +273,13 @@ void main() {
   });
 
   group('BlacklistRepository', () {
-    test('ignoreCamera then watchIgnoredCameras includes it', () async {
-      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
+    late BlacklistRepository repository;
 
+    setUp(() async {
+      repository = BlacklistRepository(database: _testDb());
+    });
+
+    test('ignoreCamera then watchIgnoredCameras includes it', () async {
       await repository.ignoreCamera('uid1', 'cam1');
       final ignored = await repository.watchIgnoredCameras('uid1').first;
 
@@ -254,8 +287,6 @@ void main() {
     });
 
     test('unignoreCamera removes it again', () async {
-      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
-
       await repository.ignoreCamera('uid1', 'cam1');
       await repository.unignoreCamera('uid1', 'cam1');
       final ignored = await repository.watchIgnoredCameras('uid1').first;
@@ -264,8 +295,6 @@ void main() {
     });
 
     test('queueIgnore then watchQueuedIgnores includes it', () async {
-      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
-
       await repository.queueIgnore('uid1', 'cam1');
       final queued = await repository.watchQueuedIgnores('uid1').first;
 
@@ -273,8 +302,6 @@ void main() {
     });
 
     test('confirmQueuedIgnore blacklists it and clears the queue', () async {
-      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
-
       await repository.queueIgnore('uid1', 'cam1');
       await repository.confirmQueuedIgnore('uid1', 'cam1');
 
@@ -285,8 +312,6 @@ void main() {
     });
 
     test('dismissQueuedIgnore clears the queue without blacklisting', () async {
-      final repository = BlacklistRepository(firestore: FakeFirebaseFirestore());
-
       await repository.queueIgnore('uid1', 'cam1');
       await repository.dismissQueuedIgnore('uid1', 'cam1');
 

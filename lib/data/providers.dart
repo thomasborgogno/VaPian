@@ -23,7 +23,7 @@ final authStateProvider = StreamProvider<User?>((ref) {
 });
 
 final speedCameraRepositoryProvider = Provider<SpeedCameraRepository>((ref) {
-  return SpeedCameraRepository(firestore: ref.watch(firestoreProvider));
+  return SpeedCameraRepository();
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -31,7 +31,7 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
 });
 
 final blacklistRepositoryProvider = Provider<BlacklistRepository>((ref) {
-  return BlacklistRepository(firestore: ref.watch(firestoreProvider));
+  return BlacklistRepository();
 });
 
 final navigationPrefsRepositoryProvider = Provider<NavigationPrefsRepository>((ref) {
