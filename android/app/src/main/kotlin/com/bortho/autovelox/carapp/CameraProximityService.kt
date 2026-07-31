@@ -60,9 +60,13 @@ data class DrivingAlertState(
  */
 class CameraProximityService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob())
-    private val cameraRepository = CameraRepository()
-    private val settingsRepository = SettingsRepository()
-    private val blacklistRepository = BlacklistRepository()
+
+    // Constructed in onCreate(), not as field initializers: CameraRepository
+    // opens the shared SQLite store via the service's Context, which isn't
+    // attached yet while these fields would otherwise be initializing.
+    private lateinit var cameraRepository: CameraRepository
+    private lateinit var settingsRepository: SettingsRepository
+    private lateinit var blacklistRepository: BlacklistRepository
 
     private lateinit var fusedClient: FusedLocationProviderClient
     private lateinit var audioManager: AudioManager
@@ -97,6 +101,9 @@ class CameraProximityService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        cameraRepository = CameraRepository(this)
+        settingsRepository = SettingsRepository()
+        blacklistRepository = BlacklistRepository(this)
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         tts = TextToSpeech(this) { status ->
@@ -402,9 +409,7 @@ class CameraProximityService : Service() {
             }
             NotificationManagerCompat.from(context).cancel(ALERT_NOTIFICATION_ID)
             val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-            CoroutineScope(SupervisorJob()).launch {
-                runCatching { BlacklistRepository().queueIgnore(uid, cameraId) }
-            }
+            runCatching { BlacklistRepository(context).queueIgnore(uid, cameraId) }
         }
 
         fun start(context: Context) {

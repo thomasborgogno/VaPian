@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
  * this with the live driving screen.
  */
 class MainCarScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
-    private val cameraRepository = CameraRepository()
+    private val cameraRepository = CameraRepository(carContext)
     private var cameras: List<SpeedCamera> = emptyList()
     private var lat: Double? = null
     private var lng: Double? = null
