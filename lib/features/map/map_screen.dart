@@ -773,7 +773,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (draft == null || draft.readOnly) return;
     // The handle sits concordant with draft.direction (see DraftOverlay),
     // corrected for the map's own rotation, same as DraftOverlay's build().
-    final thetaRad = (draft.direction - _currentBearing) * pi / 180;
+    final thetaRad = (draft.direction + _currentBearing) * pi / 180;
     // Tangential component of the drag, perpendicular to the current
     // handle direction, turned into an angle change around the marker.
     final tangential =

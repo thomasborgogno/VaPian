@@ -43,9 +43,12 @@ class DraftOverlay extends StatelessWidget {
     // Screen-space heading of the handle: concordant with `draft.direction`
     // (the raw OSM-facing bearing the handle drags), corrected for the
     // map's own rotation — draft.direction is a compass bearing, but screen
-    // "up" only means "north" when bearing is 0. Kept independent of
-    // `directionReversed`: the handle always adjusts the raw bearing.
-    final screenDirection = draft.direction - bearing;
+    // "up" only means "north" when bearing is 0. Same sign as the ground-plane
+    // arrow markers in MapScreen (map layer rotates content by `+rotation`
+    // clockwise, so a screen-space angle must add it, not subtract it). Kept
+    // independent of `directionReversed`: the handle always adjusts the raw
+    // bearing.
+    final screenDirection = draft.direction + bearing;
     final theta = screenDirection * pi / 180;
     final handlePosition =
         markerPosition +
