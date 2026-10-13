@@ -7,8 +7,8 @@ App Flutter (Android) per la segnalazione crowdsourced di autovelox, con estensi
 
 ## Decisioni architetturali da non rimettere in discussione senza motivo
 
-- **Database locale SQLite condiviso** (`sqflite` lato Dart, `SQLiteOpenHelper` lato Kotlin, stesso file `autovelox_shared.db`) — decisione che sovrascrive la precedente "nessun database locale dedicato": Cloud Firestore da sola non garantiva che l'app si aprisse completamente offline a freddo (dipende da cosa era già transitato in cache in una sessione precedente). Ogni lettura (mappa, navigazione, Android Auto) legge prima da SQLite; le scritture vanno in SQLite + una riga in `sync_queue`, rimpiazzata da Firestore quando torna la rete (`SyncService` lato Dart, `NativeSyncDrainer` lato Kotlin — indipendenti, la coda è condivisa quindi drenarla da entrambi i lati è sicuro). Vedi `PLAN.md` § Fase OSM/offline per lo schema completo.
-- **OpenStreetMap per il rendering mappa** (`flutter_map`), non Google Maps: tile raster online di default, tile vettoriali self-hosted (pipeline Planetiler, vedi `tools/offline_tiles/README.md`) per le macro-zone (5, da Geofabrik — non le 20 regioni amministrative) scaricate offline dall'utente.
+- **Database locale SQLite condiviso** (`sqflite` lato Dart, `SQLiteOpenHelper` lato Kotlin, stesso file `autovelox_shared.db`) — decisione che sovrascrive la precedente "nessun database locale dedicato": Cloud Firestore da sola non garantiva che l'app si aprisse completamente offline a freddo (dipende da cosa era già transitato in cache in una sessione precedente). Ogni lettura (mappa, navigazione, Android Auto) legge prima da SQLite; le scritture vanno in SQLite + una riga in `sync_queue`, rimpiazzata da Firestore quando torna la rete (`SyncService` lato Dart, `NativeSyncDrainer` lato Kotlin — indipendenti, la coda è condivisa quindi drenarla da entrambi i lati è sicuro). Vedi `PLAN.md` § 3.1 per lo schema completo.
+- **Google Maps per il rendering mappa** (`google_maps_flutter`, chiave `MAPS_API_KEY` iniettata nel manifest da `android/local.properties`). Nessuna mappa offline: i tile sono sempre online; i dati degli autovelox restano invece disponibili offline tramite lo store SQLite locale.
 - **Native-first per Android Auto**: tutta la logica di guida in tempo reale (GPS, prossimità, TTS, audio focus, schermate auto) vive in Kotlin nativo, non in Dart/Method Channel. Flutter possiede solo l'app telefono. Le due parti comunicano scrivendo/leggendo le stesse collezioni Firestore e lo stesso database SQLite locale, non via Method Channel. Motivazione completa in `PLAN.md`.
 - **Auth**: Google Sign-In o accesso come ospite (Firebase Anonymous Auth). Un ospite che poi accede con Google viene collegato (`linkWithCredential`), non sostituito.
 - Package Android: `com.bortho.autovelox`. Progetto Firebase: `bortho-autovelox`.
@@ -22,13 +22,16 @@ Questi file sono **intenzionalmente non versionati** (percorsi o credenziali spe
    ```properties
    sdk.dir=<percorso Android SDK>
    flutter.sdk=<percorso Flutter SDK>
+   MAPS_API_KEY=<API key Maps SDK for Android>
    ```
+
+   La `MAPS_API_KEY` si ottiene da Google Cloud Console (progetto `bortho-autovelox`) → *API e servizi* → abilita **Maps SDK for Android** → crea/recupera una API key.
 
 2. **Google Sign-In — impronta SHA-1 per macchina**: ogni macchina ha un proprio keystore di debug (`~/.android/debug.keystore`), quindi una SHA-1 diversa. Su ogni nuova macchina:
    ```bash
    keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
    ```
-   e registrare la riga `SHA1` in Firebase Console → Project settings → app Android `com.bortho.autovelox` → *Aggiungi impronta digitale*. Senza questo, il login Google fallisce solo su quella macchina.
+   e registrare la riga `SHA1` in Firebase Console → Project settings → app Android `com.bortho.autovelox` → *Aggiungi impronta digitale*. La stessa impronta va incollata anche nella whitelist della `MAPS_API_KEY` (Google Cloud Console → Credenziali → restrizioni). Senza questo, login Google e/o mappa falliscono solo su quella macchina.
 
    Il `googleServerClientId` (Web client ID) invece **è** versionato in [`lib/core/constants/auth_config.dart`](lib/core/constants/auth_config.dart) — non va rigenerato.
 
@@ -36,17 +39,9 @@ Questi file sono **intenzionalmente non versionati** (percorsi o credenziali spe
 
 4. **`.claude/settings.local.json`**: permessi locali della sessione Claude Code, non versionato di proposito (per-macchina/per-utente).
 
-5. **`maptiler.json`** (opzionale, non esiste nel repo) — API key gratuita per lo stile mappa "OSM Bright" (`lib/core/constants/maptiler_config.dart`/`tile_source_config.dart`). Senza, l'app usa automaticamente CARTO Voyager (nessuna chiave richiesta) come fallback, quindi la mappa funziona comunque. Per abilitare OSM Bright:
-   - Crea una API key gratuita su https://cloud.maptiler.com/account/keys/.
-   - Crea `maptiler.json` nella root del repo:
-     ```json
-     {"MAPTILER_API_KEY": "<la-tua-chiave>"}
-     ```
-   - Builda/lancia con `--dart-define-from-file=maptiler.json` (es. `flutter run --dart-define-from-file=maptiler.json`).
 
 ## Comandi utili
 
 - `flutter analyze` — deve restare pulito ad ogni fase.
 - `flutter test` — repository e modelli sono testati con `fake_cloud_firestore` (nessun emulatore Firebase necessario).
 - `flutter build apk --debug` — verifica end-to-end che Gradle/manifest compilino.
-- `flutter run --dart-define-from-file=maptiler.json` — per vedere lo stile mappa OSM Bright invece del fallback CARTO Voyager (vedi punto 5 sopra).

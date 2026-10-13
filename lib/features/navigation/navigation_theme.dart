@@ -34,7 +34,7 @@ class NavigationButtonColors {
 
   /// Matches the AMOLED map variant and the black speed-only view.
   static const dark = NavigationButtonColors(
-    filledBackground: Colors.teal,
+    filledBackground: Colors.tealAccent,
     filledForeground: Colors.black,
     outlinedForeground: Colors.white,
     outlinedBorder: Colors.white54,

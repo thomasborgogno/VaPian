@@ -8,7 +8,7 @@ Il progetto è agli albori (solo template Flutter di default + le dipendenze Fir
 
 Decisioni chiave prese durante la progettazione:
 
-1. **Database locale SQLite condiviso (decisione rivista in Fase OSM/offline).** La cache offline automatica di Firestore non garantiva che l'app si aprisse *completamente* offline a freddo — dipende da cosa era già transitato in cache in una sessione precedente, non da cosa l'utente ha esplicitamente scelto di rendere disponibile offline. Introdotto quindi un vero database locale (`sqflite` lato Dart, `SQLiteOpenHelper` lato Kotlin — stesso file `autovelox_shared.db`, stesso schema tabelle/colonne tenuto sincronizzato a mano): ogni lettura (mappa, navigazione telefono, Android Auto) legge prima da SQLite; le scritture vanno in SQLite + una riga in `sync_queue`, replicata su Firestore quando torna la rete. Vedi § 3 per lo schema e § "Fase OSM/offline" in fondo per i dettagli implementativi. Le uniche cose che restano puramente su `SharedPreferences`/`DataStore` sono flag UI effimeri (es. dismiss di un banner), mai dati di dominio.
+1. **Database locale SQLite condiviso (decisione rivista).** La cache offline automatica di Firestore non garantiva che l'app si aprisse *completamente* offline a freddo — dipende da cosa era già transitato in cache in una sessione precedente, non da cosa l'utente ha esplicitamente scelto di rendere disponibile offline. Introdotto quindi un vero database locale (`sqflite` lato Dart, `SQLiteOpenHelper` lato Kotlin — stesso file `autovelox_shared.db`, stesso schema tabelle/colonne tenuto sincronizzato a mano): ogni lettura (mappa, navigazione telefono, Android Auto) legge prima da SQLite; le scritture vanno in SQLite + una riga in `sync_queue`, replicata su Firestore quando torna la rete. Vedi § 3 per lo schema e § 3.1 per i dettagli implementativi. Le uniche cose che restano puramente su `SharedPreferences`/`DataStore` sono flag UI effimeri (es. dismiss di un banner), mai dati di dominio.
 2. **Architettura "native-first" per il percorso di guida.** La richiesta iniziale prevedeva "logica di business in Dart, Kotlin solo per la visualizzazione via Method Channel". Verificato che i template della Car App Library (`NavigationTemplate`, `ActionStrip`, ecc.) sono renderizzati dal processo host di Android Auto e non possono essere popolati da widget Flutter; un `FlutterEngine` headless in background per eseguire lì la logica di prossimità sarebbe fragile (cold start, Doze, kill di processo) su un percorso "safety-critical". **Decisione confermata dall'utente**: tutta la logica di guida in tempo reale (query geospaziale, calcolo prossimità/direzione, filtro tolleranza, TTS, audio focus, schermate auto) vive in **Kotlin nativo**. Flutter possiede l'intera app sul telefono (mappa, inserimento/cancellazione, impostazioni, sync OSM, OAuth, risoluzione conflitti, revisione banner). Le due parti non comunicano quasi mai via Method Channel: **condividono le stesse collezioni Firestore e lo stesso database SQLite locale**, ognuna con i propri listener/repository nativi.
 3. **Autenticazione: Google oppure ospite.** `AuthService` (`lib/data/services/auth_service.dart`) espone sia `signInWithGoogle()` che `signInAsGuest()` (Firebase Anonymous Auth). Se un utente ospite accede poi con Google, l'account viene *collegato* (`linkWithCredential`), non sostituito, così i dati già creati con l'uid anonimo restano suoi.
 
@@ -20,7 +20,7 @@ L'obiettivo di questo piano è fissare la struttura di cartelle, lo schema dati,
 
 **Dart (telefono):**
 - State management: **Riverpod** (`flutter_riverpod`) — si integra bene con gli `Stream` di Firestore (`StreamProvider`) e disaccoppia UI da repository, facilitando i test.
-- `firebase_core`, `cloud_firestore`, `firebase_auth`, `google_sign_in`, `location`, `flutter_map` + `vector_map_tiles` (mappa OpenStreetMap, sostituisce `google_maps_flutter` — vedi § Fase OSM offline). Stile tile online: MapTiler "Bright" (OSM Bright, richiede `MAPTILER_API_KEY` via `--dart-define`) con fallback automatico a CARTO Voyager (keyless) se la chiave non è configurata — `lib/core/constants/tile_source_config.dart`/`maptiler_config.dart`.
+- `firebase_core`, `cloud_firestore`, `firebase_auth`, `google_sign_in`, `location`, `google_maps_flutter`.
 - Da aggiungere in Fase 3: `oauth2` + `http` (OAuth OSM + REST changeset), `flutter_secure_storage` (token OSM cifrato, come richiesto in `features.md` §4).
 
 **Kotlin (auto):**
@@ -101,11 +101,11 @@ res/xml/automotive_app_desc.xml  # dichiarazione app Android Auto (categoria, mi
 
 Stesso file aperto sia da Dart (`lib/data/local/app_database.dart`, via `sqflite`) sia da Kotlin (`LocalCameraStore.kt`, via `SQLiteOpenHelper`) — nomi tabella/colonna tenuti sincronizzati a mano tra i due linguaggi, nessun codegen condiviso. WAL abilitato su entrambi i lati per l'accesso concorrente nello stesso processo (`AutoveloxCarAppService` non dichiara `android:process`).
 
-- **`speed_cameras`** — mirror di `speed_cameras/{id}`, più `region` (regione italiana scaricata per l'offline, se presente), `dirty` (modifica locale non ancora confermata su Firestore) e `deleted` (tombstone, per non perdere la riga finché `sync_queue` non ha replicato la cancellazione).
+- **`speed_cameras`** — mirror di `speed_cameras/{id}`, più `region` (campo opzionale), `dirty` (modifica locale non ancora confermata su Firestore) e `deleted` (tombstone, per non perdere la riga finché `sync_queue` non ha replicato la cancellazione).
 - **`ignored_cameras`** / **`queued_ignores`** — mirror delle sottocollezioni Firestore omonime, stesse colonne `dirty`/`deleted`.
 - **`sync_queue`** — operazioni in attesa di replay su Firestore: `op_type` (`upsertCamera`/`deleteCamera`/`upsertIgnoredCamera`/`deleteIgnoredCamera`/`queueIgnore`/`dismissQueuedIgnore`), `target_id` (per coalescere edit ripetuti allo stesso id), `payload` JSON, `created_at`, `attempts`. Drenata da `SyncService` (Dart, si attiva a ogni reconnect via `connectivity_plus`) e da `NativeSyncDrainer` (Kotlin, `ConnectivityManager.NetworkCallback`) — indipendenti, sicuro drenarla da entrambi perché ogni scrittura Firestore replicata è idempotente.
 
-Ogni lettura (mappa, navigazione telefono, Android Auto) legge sempre da qui, mai direttamente da Firestore — l'app funziona identica online/offline/a freddo. `SyncService.pullNear`/`primeRegion` (Dart) e i listener nativi in `CameraRepository.kt`/`BlacklistRepository.kt` (Kotlin) sono le uniche vie che portano dati *da* Firestore *in* questo database.
+Ogni lettura (mappa, navigazione telefono, Android Auto) legge sempre da qui, mai direttamente da Firestore — l'app funziona identica online/offline/a freddo. `SyncService.pullNear` (Dart) e i listener nativi in `CameraRepository.kt`/`BlacklistRepository.kt` (Kotlin) sono le uniche vie che portano dati *da* Firestore *in* questo database.
 
 ---
 
@@ -114,7 +114,7 @@ Ogni lettura (mappa, navigazione telefono, Android Auto) legge sempre da qui, ma
 | Fase | Contenuto | Stato |
 |---|---|---|
 | **0 — Fondamenta** | Riverpod, struttura cartelle Dart, modelli dati, repository Firestore, regole di sicurezza base, `geo.dart` (haversine + geohash), auth Google/ospite | ✅ Completata |
-| **1 — Mappa & CRUD (telefono)** | marker colorati per stato/sorgente, inserimento (long-press/FAB) con limite da preset + direzione, cancellazione propri marker, query "camere in vista" via geohash | ✅ Completata |
+| **1 — Mappa & CRUD (telefono)** | `google_maps_flutter`, marker colorati per stato/sorgente, inserimento (long-press/FAB) con limite da preset + direzione, cancellazione propri marker, query "camere in vista" via geohash | ✅ Completata |
 | **2 — Impostazioni** | Slider distanza (fissa/dinamica), toggle filtro tolleranza, persistiti su `users/{uid}.settings` | ✅ Completata |
 | **3 — Integrazione OSM (telefono)** | Sync manuale Overpass → Firestore, Smart Reminder 7gg, login OAuth2 OSM, pubblicazione changeset | ✅ Completata |
 | **4 — Blacklist & revisione** | Sottocollezione `ignored_cameras`, banner di conferma su avvio app per elementi `pending` catturati da Android Auto, promozione a `approved` | ✅ Completata |
@@ -122,7 +122,6 @@ Ogni lettura (mappa, navigazione telefono, Android Auto) legge sempre da qui, ma
 | **6 — Logica di guida nativa** | `CameraProximityService`: GPS+heading, query geohash, `ProximityCalculator`, `ToleranceFilter`, card di allarme (`DrivingScreen`), TTS + audio focus, i due pulsanti azione (Ignora/Segnala) → scritture Firestore | 🔶 Codice completato, DHU/dispositivo reale da verificare |
 | **7 — Hardening** | Audit security rules, eventuale Cloud Function per l'ingestione OSM, permessi location in background (dialog Android 12+), test batteria, revisione linee guida Google per app di guida/distrazione, test su head unit reale | ⬜ |
 | **8 — Rilascio** | Crashlytics/Analytics (opzionali), icone, privacy policy (obbligatoria: posizione + dati crowdsourced), listing Play Store | ⬜ |
-| **9 — Mappa OpenStreetMap & offline** | `google_maps_flutter` → `flutter_map` (mappa telefono + navigazione), database SQLite locale condiviso Dart/Kotlin con coda di sync (`SyncService`/`NativeSyncDrainer`), download per macro-zona di tile vettoriali self-hosted + priming autovelox locali (`OfflineMapsSection`, 5 zone Geofabrik anziché le 20 regioni amministrative) | 🔶 Lato Dart completato e verificato su device reale; lato Kotlin compila ma non verificato su DHU/head unit; pipeline CI Planetiler (pubblica su GitHub Release, nessun secret richiesto) scritta ma mai eseguita (§ `tools/offline_tiles/README.md`) |
 
 Ogni fase è pensata per essere verificabile isolatamente (l'MVP telefono, Fasi 0–4, funziona ed è testabile senza toccare Android Auto).
 

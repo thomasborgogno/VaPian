@@ -12,7 +12,7 @@ L'applicazione fa del crowdsourcing e della filosofia open-source i suoi pilastr
 
 ### 2.1 Home Page (Schermata Principale)
 
-* **Mappa Interattiva:** Visualizzazione cartografica fluida con marker personalizzati e differenziati cromaticamente in base alla sorgente del dato:
+* **Mappa Interattiva (Google Maps SDK):** Visualizzazione cartografica fluida con marker personalizzati e differenziati cromaticamente in base alla sorgente del dato:
   * *Marker Verde:* Autovelox ufficiale verificato proveniente da OpenStreetMap.
   * *Marker Blu:* Segnalazione utente approvata (`status: 'approved'`).
   * *Marker Arancione/Giallo:* Segnalazione utente in attesa di verifica (`status: 'pending'`).

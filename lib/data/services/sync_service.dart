@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../core/constants/italian_macro_zones.dart';
 import '../../core/utils/geo.dart';
 import '../local/app_database.dart';
 import '../local/local_change_bus.dart';
@@ -20,7 +19,7 @@ import 'firestore_paths.dart';
 /// SQLite (see `SpeedCameraRepository`/`BlacklistRepository`) and record
 /// what changed in `sync_queue`; this service replays that queue against
 /// Firestore once connectivity returns, and pulls remote changes back into
-/// the local store on demand (see [pullNear], [primeZone]).
+/// the local store on demand (see [pullNear]).
 class SyncService {
   SyncService({FirebaseFirestore? firestore, Future<Database>? database})
       : _firestore = firestore ?? FirebaseFirestore.instance,
@@ -168,47 +167,6 @@ class SyncService {
   /// in-flight offline edit is never clobbered by a stale remote read.
   Future<void> pullNear(double lat, double lng, double radiusMeters, {String? region}) {
     return _pullByPrefixes(geohashNeighborPrefixes(lat, lng, radiusMeters), region: region);
-  }
-
-  /// Downloads every camera falling inside [zoneName]'s bounding box
-  /// ([italianMacroZones]) and stores it locally tagged with that zone, so
-  /// a zone the user picked for offline use is fully navigable from a cold
-  /// start with no network — not just "whatever was already visited on the
-  /// map while online" like [pullNear] gives for the current viewport.
-  /// Returns how many cameras were primed, for UI feedback (mirrors
-  /// `OsmSyncSection`'s per-region result messaging).
-  ///
-  /// Firestore has no native bounding-box query, and this app's total
-  /// camera count is small (a sparse, single-country dataset), so this
-  /// simply scans the whole collection once and filters client-side rather
-  /// than trying to cover a rectangle with geohash prefix ranges.
-  Future<int> primeZone(String zoneName) async {
-    final zone = italianMacroZones.where((z) => z.name == zoneName).firstOrNull;
-    if (zone == null) return 0;
-    final bounds = zone.bounds;
-    final db = await _databaseFuture;
-    final snapshot = await _camerasCollection.get();
-    var primed = 0;
-    final batch = db.batch();
-    for (final doc in snapshot.docs) {
-      final camera = SpeedCamera.fromFirestore(doc);
-      if (!bounds.contains(camera.lat, camera.lng)) continue;
-      final existing = await db.query(
-        SpeedCamerasTable.name,
-        where: '${SpeedCamerasTable.id} = ? AND ${SpeedCamerasTable.dirty} = 1',
-        whereArgs: [camera.id],
-      );
-      if (existing.isNotEmpty) continue;
-      batch.insert(
-        SpeedCamerasTable.name,
-        camera.toLocalRow(region: zoneName),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      primed++;
-    }
-    await batch.commit(noResult: true);
-    LocalChangeBus.instance.notify();
-    return primed;
   }
 
   Future<void> _pullByPrefixes(List<String> prefixes, {String? region}) async {

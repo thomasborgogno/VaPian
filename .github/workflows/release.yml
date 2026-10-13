@@ -54,15 +54,17 @@ jobs:
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
-      # Optional: if MAPTILER_API_KEY isn't set as a repo secret, this is
-      # empty and TileSourceConfig falls back to the keyless CARTO style —
-      # the build still succeeds either way.
+      # android/app/build.gradle.kts reads MAPS_API_KEY from local.properties
+      # (gitignored, machine-local) — CI has no such file, so without this the
+      # release manifest gets an empty key and the map fails to load.
+      - name: Set up local.properties
+        run: echo "MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}" >> android/local.properties
+
       - name: Build release APK
         run: |
           flutter build apk --release \
             --build-name="${{ steps.version.outputs.name }}" \
-            --build-number="${{ steps.version.outputs.code }}" \
-            --dart-define=MAPTILER_API_KEY="${{ secrets.MAPTILER_API_KEY }}"
+            --build-number="${{ steps.version.outputs.code }}"
 
       - name: Remove signing material
         if: always()

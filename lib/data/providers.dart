@@ -14,7 +14,6 @@ import 'repositories/navigation_prefs_repository.dart';
 import 'repositories/settings_repository.dart';
 import 'repositories/speed_camera_repository.dart';
 import 'services/auth_service.dart';
-import 'services/offline_tile_service.dart';
 import 'services/sync_service.dart';
 
 final firestoreProvider = Provider<FirebaseFirestore>((ref) {
@@ -27,8 +26,6 @@ final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 /// into the local store — see `SyncService`. Started the first time
 /// anything reads this provider (`App` watches it once at the root) and
 /// kept alive for the app's lifetime.
-final offlineTileServiceProvider = Provider<OfflineTileService>((ref) => OfflineTileService());
-
 final syncServiceProvider = Provider<SyncService>((ref) {
   final service = SyncService();
   service.start();
@@ -77,22 +74,6 @@ final pendingSyncCountProvider = StreamProvider<int>((ref) async* {
   Future<int> query() => dao.pendingCount();
   yield await query();
   yield* LocalChangeBus.instance.onChange.asyncMap((_) => query());
-});
-
-/// Macro-zones the user selected for offline use
-/// ([UserSettings.offlineMapZones]) that actually have their `.mbtiles`
-/// downloaded locally — the subset `OfflineVectorTileLayer`/`MapScreen`
-/// treat as "render from local vector tiles instead of the online raster
-/// fallback". Selecting a zone only queues it; `OfflineMapsSection`
-/// invalidates this provider once the download actually completes.
-final downloadedZonesProvider = FutureProvider<Set<String>>((ref) async {
-  final zones = ref.watch(userSettingsProvider).value?.offlineMapZones ?? const [];
-  final tileService = ref.watch(offlineTileServiceProvider);
-  final downloaded = <String>{};
-  for (final zone in zones) {
-    if (await tileService.isDownloaded(zone)) downloaded.add(zone);
-  }
-  return downloaded;
 });
 
 /// IDs of cameras the current user has chosen to hide (features.md 2.1

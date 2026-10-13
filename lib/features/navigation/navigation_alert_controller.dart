@@ -110,7 +110,6 @@ class NavigationAlertController extends ChangeNotifier {
   void _onLocation(loc.LocationData data) {
     final lat = data.latitude;
     final lng = data.longitude;
-    if (lat == null || lng == null) return;
     _currentLat = lat;
     _currentLng = lng;
     final speedKmh = (data.speed ?? 0) * 3.6;
@@ -154,8 +153,9 @@ class NavigationAlertController extends ChangeNotifier {
     for (final camera in _nearbyCameras) {
       if (camera.status != SpeedCameraStatus.approved) continue;
       if (_ignoredIds.contains(camera.id) ||
-          _sessionIgnoredIds.contains(camera.id))
+          _sessionIgnoredIds.contains(camera.id)) {
         continue;
+      }
       if (!isAheadInTravelDirection(
         userLat: lat,
         userLng: lng,
@@ -264,8 +264,9 @@ class NavigationAlertController extends ChangeNotifier {
   /// phone-side blacklist confirmation once out of navigation mode.
   Future<void> ignoreActiveCamera(String uid) async {
     final camera = _state.camera;
-    if (camera == null || camera.source != SpeedCameraSource.openstreetmap)
+    if (camera == null || camera.source != SpeedCameraSource.openstreetmap) {
       return;
+    }
     _sessionIgnoredIds.add(camera.id);
     _announcedIds.remove(camera.id);
     _state = _state.copyWith(

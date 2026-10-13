@@ -1,49 +1,45 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Small colored dot shown instead of the full camera glyph once zoomed out
 /// past `MapScreen`'s dot threshold — at that scale the full icon (with its
-/// direction pointer) is too small to read anyway, and rendering hundreds of
-/// full glyphs is what caused the lag this replaces.
-///
-/// A `flutter_map` `Marker.child` is a plain widget (unlike the old
-/// `GoogleMap` bitmap descriptors), so this paints directly instead of
-/// baking a bitmap — one `CustomPaint` per dot marker.
-class DotMarker extends StatelessWidget {
-  const DotMarker({super.key, required this.color});
-
-  final Color color;
+/// direction pointer) is too small to read anyway, and rendering hundreds
+/// of full-size bitmaps is what caused the lag this replaces.
+class DotMarkerIcons {
+  DotMarkerIcons._();
 
   static const double radius = 6;
-  static const double diameter = radius * 2;
+  static const double _renderScale = 3;
 
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(diameter, diameter),
-      painter: _DotPainter(color),
-    );
+  static final Map<Color, BitmapDescriptor> _cache = {};
+
+  static Future<BitmapDescriptor> forColor(Color color) async {
+    return _cache[color] ??= await _render(color);
   }
-}
 
-class _DotPainter extends CustomPainter {
-  const _DotPainter(this.color);
+  static Future<BitmapDescriptor> _render(Color color) async {
+    final size = radius * 2;
+    final rawSize = size * _renderScale;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, rawSize, rawSize))
+      ..scale(_renderScale);
+    final center = Offset(size / 2, size / 2);
 
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    canvas.drawCircle(center, DotMarker.radius, Paint()..color = color);
+    canvas.drawCircle(center, radius, Paint()..color = color);
     canvas.drawCircle(
       center,
-      DotMarker.radius,
+      radius,
       Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5,
     );
-  }
 
-  @override
-  bool shouldRepaint(_DotPainter oldDelegate) => oldDelegate.color != color;
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(rawSize.round(), rawSize.round());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: size, height: size);
+  }
 }

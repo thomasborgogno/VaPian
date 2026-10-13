@@ -33,9 +33,9 @@ class AuthService {
       );
       final current = _firebaseAuth.currentUser;
       if (current != null && current.isAnonymous) {
-        return current.linkWithCredential(credential);
+        return await current.linkWithCredential(credential);
       }
-      return _firebaseAuth.signInWithCredential(credential);
+      return await _firebaseAuth.signInWithCredential(credential);
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
       rethrow;

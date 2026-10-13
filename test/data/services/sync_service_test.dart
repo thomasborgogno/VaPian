@@ -185,42 +185,4 @@ void main() {
       expect(local!.limit, 50);
     });
   });
-
-  group('SyncService.primeZone', () {
-    test('downloads only cameras inside the zone bounding box', () async {
-      final firestore = FakeFirebaseFirestore();
-      final dbFuture = _testDb();
-      final repository = SpeedCameraRepository(database: dbFuture);
-      final syncService = SyncService(firestore: firestore, database: dbFuture);
-
-      // Rome, well inside the Centro zone's bounding box.
-      await firestore.collection('speed_cameras').doc('centro1').set(
-        const SpeedCamera(
-          id: 'centro1',
-          lat: 41.9028,
-          lng: 12.4964,
-          status: SpeedCameraStatus.approved,
-          source: SpeedCameraSource.openstreetmap,
-          geohash: 'sr2yk1z',
-        ).toMap(),
-      );
-      // Milan, well outside the Centro zone's bounding box.
-      await firestore.collection('speed_cameras').doc('nordovest1').set(
-        const SpeedCamera(
-          id: 'nordovest1',
-          lat: 45.4642,
-          lng: 9.1900,
-          status: SpeedCameraStatus.approved,
-          source: SpeedCameraSource.openstreetmap,
-          geohash: 'u0nd9heb',
-        ).toMap(),
-      );
-
-      final primed = await syncService.primeZone('Centro');
-
-      expect(primed, 1);
-      expect(await repository.getById('centro1'), isNotNull);
-      expect(await repository.getById('nordovest1'), isNull);
-    });
-  });
 }
