@@ -12,13 +12,15 @@ import 'navigation_map_view.dart';
 import 'navigation_speed_view.dart';
 import 'navigation_theme.dart';
 
+/// Declaration order is the cycle order of the view button: speed-only
+/// (no map), then the black-themed map, then the light-themed map.
 enum _NavigationVariant {
-  map,
+  speed,
   amoled,
-  speed;
+  map;
 
   static _NavigationVariant fromName(String? name) =>
-      values.firstWhere((v) => v.name == name, orElse: () => _NavigationVariant.map);
+      values.firstWhere((v) => v.name == name, orElse: () => _NavigationVariant.speed);
 }
 
 /// Full-screen phone-side "modalità di navigazione": GPS proximity alerts
@@ -35,7 +37,7 @@ class NavigationScreen extends ConsumerStatefulWidget {
 class _NavigationScreenState extends ConsumerState<NavigationScreen> {
   late final NavigationAlertController _controller;
   late final NavigationPrefsRepository _prefsRepo;
-  _NavigationVariant _variant = _NavigationVariant.map;
+  _NavigationVariant _variant = _NavigationVariant.speed;
   bool _starting = true;
 
   @override
