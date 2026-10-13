@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -13,6 +14,13 @@ class OverpassException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Internal signal: this endpoint failed in a way worth retrying elsewhere.
+class _RetryableOverpassFailure implements Exception {
+  _RetryableOverpassFailure(this.reason);
+
+  final String reason;
 }
 
 const Map<String, int> _compassDirections = {
@@ -63,7 +71,15 @@ class OverpassService {
 
   final http.Client _client;
 
-  static const String _endpoint = 'https://overpass-api.de/api/interpreter';
+  /// Public Overpass instances, tried in order: when one is overloaded
+  /// (504/429 "server is probably too busy"), unreachable or times out, the
+  /// next is tried instead of failing the whole sync. Every instance serves
+  /// the same global OSM data, so the result is equivalent.
+  static const List<String> endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+  ];
 
   /// Overpass's public instance returns 406 for generic HTTP-library
   /// User-Agents (including Dart's own default) — it expects a descriptive
@@ -86,32 +102,65 @@ area["name:it"="$regionName"]["admin_level"="4"]["boundary"="administrative"]->.
 out body;
 ''';
 
+    final failures = <String>[];
+    for (final endpoint in endpoints) {
+      try {
+        return await _fetchFrom(endpoint, query);
+      } on _RetryableOverpassFailure catch (failure) {
+        failures.add('${Uri.parse(endpoint).host}: ${failure.reason}');
+      }
+    }
+    throw OverpassException(
+      'Nessun server Overpass ha risposto per $regionName (${failures.join('; ')}). '
+      'Riprova tra qualche minuto.',
+    );
+  }
+
+  /// Runs [query] against one [endpoint]. Throws [_RetryableOverpassFailure]
+  /// for anything another instance might not suffer from (overload, timeout,
+  /// network error, non-JSON/`runtime error` body) and [OverpassException]
+  /// for a failure that would repeat everywhere (e.g. 400 = bad query).
+  Future<List<SpeedCamera>> _fetchFrom(String endpoint, String query) async {
     final http.Response response;
     try {
       response = await _client
           .post(
-            Uri.parse(_endpoint),
+            Uri.parse(endpoint),
             headers: {'User-Agent': _userAgent},
             body: {'data': query},
           )
           // The query itself asks Overpass for [timeout:60]; this client-side
           // bound is only there so a hung connection (no response at all,
-          // e.g. flaky mobile data) fails loudly instead of leaving the sync
-          // button spinning forever.
+          // e.g. flaky mobile data) fails over to the next endpoint instead
+          // of leaving the sync button spinning forever.
           .timeout(const Duration(seconds: 90));
     } on TimeoutException {
-      throw OverpassException(
-        'Nessuna risposta da Overpass per $regionName dopo 90 secondi (rete lenta o server irraggiungibile).',
-      );
+      throw _RetryableOverpassFailure('nessuna risposta dopo 90 secondi');
+    } on http.ClientException catch (e) {
+      throw _RetryableOverpassFailure('errore di rete (${e.message})');
+    } on SocketException catch (e) {
+      throw _RetryableOverpassFailure('errore di rete (${e.message})');
     }
 
+    if (response.statusCode == 400) {
+      throw OverpassException('Overpass ha rifiutato la query (400)');
+    }
     if (response.statusCode != 200) {
-      // 504 = Overpass's own [timeout:60] expired server-side (it's busy or
-      // the region is too large) — retrying, possibly later, is the only fix.
-      throw OverpassException('Overpass ha risposto ${response.statusCode} per $regionName');
+      // 504/429 = busy or rate-limited: another instance may well answer.
+      throw _RetryableOverpassFailure('HTTP ${response.statusCode}');
     }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final Map<String, dynamic> decoded;
+    try {
+      decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    } on FormatException {
+      // An overloaded instance can answer 200 with an HTML error page.
+      throw _RetryableOverpassFailure('risposta non valida');
+    }
+    final remark = decoded['remark'] as String?;
+    if (remark != null && remark.contains('runtime error')) {
+      throw _RetryableOverpassFailure(remark);
+    }
     final elements = decoded['elements'] as List<dynamic>? ?? const [];
 
     final cameras = <SpeedCamera>[];

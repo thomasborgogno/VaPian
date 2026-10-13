@@ -111,6 +111,70 @@ void main() {
       expect(cameras.single.limit, isNull);
     });
 
+    test('falls back to the next endpoint when the first answers 504', () async {
+      final hosts = <String>[];
+      final client = MockClient((request) async {
+        hosts.add(request.url.host);
+        if (hosts.length == 1) return http.Response('busy', 504);
+        return http.Response(
+          jsonEncode({
+            'elements': [
+              {'type': 'node', 'id': 1, 'lat': 46.5, 'lon': 11.3, 'tags': {'maxspeed': '50'}},
+            ],
+          }),
+          200,
+        );
+      });
+
+      final cameras = await OverpassService(client: client).fetchSpeedCameras('Trentino-Alto Adige');
+
+      expect(cameras, hasLength(1));
+      expect(hosts, hasLength(2));
+      expect(hosts[0], isNot(hosts[1]));
+    });
+
+    test('falls back when an endpoint answers 200 with a non-JSON body', () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        if (calls == 1) return http.Response('<html>busy</html>', 200);
+        return http.Response(jsonEncode({'elements': []}), 200);
+      });
+
+      final cameras = await OverpassService(client: client).fetchSpeedCameras('Lazio');
+
+      expect(cameras, isEmpty);
+      expect(calls, 2);
+    });
+
+    test('does not retry on 400 (the query itself is bad)', () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        return http.Response('bad query', 400);
+      });
+
+      await expectLater(
+        OverpassService(client: client).fetchSpeedCameras('Lazio'),
+        throwsA(isA<OverpassException>()),
+      );
+      expect(calls, 1);
+    });
+
+    test('throws once every endpoint has failed', () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        return http.Response('busy', 504);
+      });
+
+      await expectLater(
+        OverpassService(client: client).fetchSpeedCameras('Lazio'),
+        throwsA(isA<OverpassException>()),
+      );
+      expect(calls, OverpassService.endpoints.length);
+    });
+
     test('throws OverpassException on a non-200 response', () async {
       final client = MockClient((request) async => http.Response('error', 500));
 
