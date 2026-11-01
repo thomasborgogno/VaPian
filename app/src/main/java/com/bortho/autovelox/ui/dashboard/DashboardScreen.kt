@@ -27,6 +27,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.PhonelinkOff
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,6 +66,7 @@ import com.bortho.autovelox.core.model.CameraSource
 import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.data.DataFreshness
 import com.bortho.autovelox.link.LinkStatus
+import com.bortho.autovelox.link.MediaCmd
 import com.bortho.autovelox.link.RadioMediaState
 import com.bortho.autovelox.ui.theme.VaPianColors
 import com.bortho.autovelox.vehicle.VehicleState
@@ -91,24 +96,44 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         FreshnessBanner(lastSync)
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Column(Modifier.weight(2f).fillMaxHeight().padding(16.dp)) {
-                TopStrip(speed = guidance.speedKmh, limit = guidance.camera?.limit, overLimit = guidance.overLimit, vehicle = vehicle)
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    RadarView(fix, guidance, nearby)
-                    guidance.camera?.let { AlertCard(it, guidance.distanceMeters, guidance.overLimit, Modifier.align(Alignment.TopCenter)) }
+        // Page 0: the driving dashboard; page 1 (swipe right to left): settings. Banner and volume stay on both.
+        val pager = rememberPagerState(pageCount = { 2 })
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
+                if (page == 0) {
+                    Row(Modifier.fillMaxSize()) {
+                        Column(Modifier.weight(2f).fillMaxHeight().padding(16.dp)) {
+                            TopStrip(
+                                speed = guidance.speedKmh,
+                                limit = guidance.camera?.limit,
+                                overLimit = guidance.overLimit,
+                                vehicle = vehicle,
+                                phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
+                            )
+                            Box(Modifier.weight(1f).fillMaxWidth()) {
+                                RadarView(fix, guidance, nearby)
+                                guidance.camera?.let { AlertCard(it, guidance.distanceMeters, guidance.overLimit, Modifier.align(Alignment.TopCenter)) }
+                            }
+                            ActionRow(viewModel, activeCamera = guidance.camera)
+                        }
+                        PlayerCard(
+                            media = media,
+                            phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
+                            onCommand = { cmd -> scope.launch { viewModel.mediaCommand(cmd) } },
+                            onSeek = { position -> scope.launch { viewModel.mediaCommand(MediaCmd.SEEK, position) } },
+                            modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
+                        )
+                    }
+                } else {
+                    DashboardSettings(
+                        link = link,
+                        paired = viewModel.phoneAddress != null,
+                        lastSyncAt = lastSync,
+                        onPair = { showPairing = true },
+                        onDiagnostics = onOpenDiagnostics,
+                    )
                 }
-                ActionRow(viewModel, activeCamera = guidance.camera)
             }
-            SidePanel(
-                link = link,
-                media = media,
-                onMediaCommand = { cmd -> scope.launch { viewModel.mediaCommand(cmd) } },
-                paired = viewModel.phoneAddress != null,
-                onPair = { showPairing = true },
-                onDiagnostics = onOpenDiagnostics,
-                modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
-            )
         }
         VolumeBar(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
     }
@@ -135,7 +160,7 @@ private fun FreshnessBanner(lastSyncAt: Long) {
 }
 
 @Composable
-private fun TopStrip(speed: Double, limit: Int?, overLimit: Boolean, vehicle: VehicleState) {
+private fun TopStrip(speed: Double, limit: Int?, overLimit: Boolean, vehicle: VehicleState, phoneConnected: Boolean) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
@@ -149,6 +174,48 @@ private fun TopStrip(speed: Double, limit: Int?, overLimit: Boolean, vehicle: Ve
         if (limit != null) SpeedLimitSign(limit)
         Spacer(Modifier.weight(1f))
         VehicleChips(vehicle)
+        // Shown only when something is wrong: a connected phone needs no indicator.
+        if (!phoneConnected) {
+            Icon(
+                Icons.Filled.PhonelinkOff,
+                contentDescription = "Telefono non collegato",
+                Modifier.size(40.dp),
+                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
+/** Settings page of the head unit, reached by swiping the dashboard from right to left. */
+@Composable
+private fun DashboardSettings(link: LinkStatus, paired: Boolean, lastSyncAt: Long, onPair: () -> Unit, onDiagnostics: () -> Unit) {
+    val age = DataFreshness.ageDays(lastSyncAt, System.currentTimeMillis())
+    Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Impostazioni", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Telefono", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text(linkText(link, paired), fontSize = 20.sp)
+                Button(onClick = onPair, Modifier.height(64.dp)) { Text(if (paired) "Cambia telefono" else "Scegli telefono", fontSize = 20.sp) }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Dati autovelox", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    when (age) {
+                        null -> "Mai aggiornati"
+                        0 -> "Aggiornati oggi"
+                        1 -> "Aggiornati 1 giorno fa"
+                        else -> "Aggiornati $age giorni fa"
+                    },
+                    fontSize = 20.sp,
+                )
+            }
+        }
+        Button(onClick = onDiagnostics, Modifier.height(64.dp)) { Text("Diagnostica", fontSize = 20.sp) }
+        Spacer(Modifier.weight(1f))
+        Text("Scorri verso destra per tornare alla dashboard.", fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
     }
 }
 
@@ -261,21 +328,6 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
             ) { Text("IGNORA", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
         }
     }
-    }
-}
-
-@Composable
-private fun SidePanel(link: LinkStatus, media: RadioMediaState?, onMediaCommand: (String) -> Unit, paired: Boolean, onPair: () -> Unit, onDiagnostics: () -> Unit, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PlayerCard(
-            media = media,
-            phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
-            onCommand = onMediaCommand,
-            modifier = Modifier.weight(1f),
-        )
-        Text(linkText(link, paired), fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground)
-        Button(onClick = onPair, Modifier.fillMaxWidth().height(56.dp)) { Text(if (paired) "Cambia telefono" else "Scegli telefono", fontSize = 18.sp) }
-        TextButton(onClick = onDiagnostics, Modifier.fillMaxWidth()) { Text("Diagnostica") }
     }
 }
 

@@ -39,7 +39,7 @@ class DashboardViewModel @Inject constructor(
         settings.phoneAddress = address
     }
 
-    suspend fun mediaCommand(cmd: String) = radioLink.sendMediaCommand(MediaCmd(cmd))
+    suspend fun mediaCommand(cmd: String, positionMs: Long = 0) = radioLink.sendMediaCommand(MediaCmd(cmd, positionMs))
 
     suspend fun report(): SpeedCamera? = guidance.reportNow()
     suspend fun undo(camera: SpeedCamera) = guidance.undoReport(camera)

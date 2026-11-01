@@ -77,6 +77,8 @@ Regole di scrittura (correggono i difetti del codice Flutter/Kotlin attuale):
 
 ## 7. Dashboard (ruolo autoradio, anche tablet landscape)
 
+La Dashboard è un pager a due pagine: **principale** (velocità, radar, segnala, player; in alto a destra compare solo l'icona "telefono scollegato" quando il link non c'è) e **impostazioni** (swipe da destra a sinistra: scelta/cambio telefono, età dei dati, Diagnostica). Banner e volume restano su entrambe.
+
 Layout come da piano: ~2/3 radar + ~1/3 player, barra volume in basso sempre visibile, pulsante "Segnala" grande in basso-centro dell'area radar.
 - **Radar**: posizione al centro, camere entro raggio, prossima camera in evidenza con distanza/limite, tachimetro in alto. `Canvas` Compose, nessun tile.
 - **Segnala**: un tap, target ≥ 72 dp, feedback aptico/sonoro/TTS, barra "Annulla" 5 s, poi salvataggio locale + invio al telefono (PROTOCOL §5).
@@ -121,15 +123,18 @@ Primario: `MediaController`/`MediaBrowser` sulla sessione AVRCP; comandi con `Tr
    (outbox con ack, idempotenza, rate limit, dataset corrotto scartato); trasporto RFCOMM con riconnessione e watchdog.
    ⬜ Prova su due dispositivi reali.
 5. **Dashboard** ✅ Radar in Canvas, velocità, limite, avviso, segnala con annulla a 5 s, ignora, barra del volume, banner a 14 giorni,
-   scelta del telefono, **player** (cover, titolo, artista, progresso, prev/play/next) via canale RFCOMM, provato
+   scelta del telefono, **player** (la barra di avanzamento è anche un cursore: rilasciandolo il telefono salta a quel punto) (cover, titolo, artista, progresso, prev/play/next) via canale RFCOMM, provato
    tra Pixel e tablet; la scheda si adatta all'altezza disponibile. ⬜ AVRCP come alternativa.
 6. **Segnali dell'auto** ✅ `VehicleSignals` (porte, marcia, velocità dal CAN) in sola lettura. ⬜ Significato dei codici da test in auto.
-7. **UI telefono** ✅ tre schede. **Mappa** (Google Maps): marker per origine/stato (verde OSM, azzurro utente, arancione in
-   attesa), dettaglio con ignora/ripristina/elimina/modifica/conferma, aggiunta con limite e direzione (mirino o pressione
-   lunga), elenco delle segnalazioni da confermare (quelle arrivate dall'autoradio o dall'auto), apertura sui dati scaricati
-   se manca il GPS. **Dati**: download regioni da OSM, collegamento autoradio, accesso al player. **Impostazioni**: distanza
-   di preavviso fissa/dinamica e tolleranza, sincronizzate con l'autoradio e con l'account. ⬜ Login Google e collegamento
-   dall'ospite, navigazione con camera che segue l'utente, OSM OAuth/changeset (OSM di produzione).
+7. **UI telefono** ✅ due schede (Mappa, Impostazioni) con **barra di navigazione flottante** (a pillola, sopra il contenuto; si nasconde mentre si
+   modifica un autovelox). **Mappa** (Google Maps) con la **stessa grafica di marker della versione Flutter**: badge circolare
+   col pittogramma della telecamera (blu = OSM, rosso = segnalazione approvata, arancione = in attesa o bozza, grigio =
+   ignorato), freccia a parte ruotata sulla direzione monitorata (due marker per camera: badge sempre dritto, freccia
+   piatta), pallini sotto zoom 10. Bozza trascinabile: si sposta il marker e si ruota la **maniglia viola** a 70 dp; pannello con
+   limiti, "senso di marcia contrario", elimina, approva, ignora/ripristina. Elenco delle segnalazioni da confermare. In alto a destra: pulsante **Filtri** (come in Flutter: limiti di velocità, "senza limite noto", "solo ignorati" in grigio, "Cancella filtro", segnalino quando attivo) accanto a quello della posizione, la bussola sotto; tutti ridisegnati con i colori del tema (quelli nativi di Google Maps sono sempre chiari). Il filtro è stato di sessione, non salvato.
+   **Impostazioni**: avvisi (attivazione, preavviso fisso/dinamico, tolleranza), autoradio (collegamento, pronto in background, accesso al player) e dati autovelox per regione (download da OSM): quelle già scaricate in cima, tutte le altre in un accordion. Colori: **Material You** dal telefono su Android 12+, altrimenti un teal (la Dashboard è sempre scura, fondo nero).
+   Il radar della Dashboard usa gli stessi badge e colori. ⬜ Login Google e collegamento dall'ospite, filtro per limite,
+   navigazione con camera che segue l'utente, OSM OAuth/changeset (OSM di produzione).
 8. **Android Auto** ⬜.
 9. **Hardening** ⬜ Test strumentati su Room e sync, avvio a freddo in modalità aereo, batteria, emulatore API 26 landscape 1280×720.
 

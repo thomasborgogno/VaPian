@@ -13,12 +13,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
 import com.bortho.autovelox.core.guidance.GuidanceState
 import com.bortho.autovelox.core.guidance.LocationFix
 import com.bortho.autovelox.core.guidance.RadarMath
-import com.bortho.autovelox.core.model.CameraSource
 import com.bortho.autovelox.core.model.SpeedCamera
+import com.bortho.autovelox.ui.map.CameraColors
+import com.bortho.autovelox.ui.map.CameraGlyph
 import com.bortho.autovelox.ui.theme.VaPianColors
 
 /**
@@ -52,19 +55,26 @@ fun RadarView(
 
             if (fix != null && heading != null) {
                 val active = guidance.camera
+                val density = this.density
                 for (camera in cameras) {
                     val p = RadarMath.project(fix.lat, fix.lng, heading, camera.lat, camera.lng)
                     if (p.distance > rangeMeters) continue
-                    val center = Offset(carX + p.x.toFloat() * scale, carY - p.y.toFloat() * scale)
+                    val cx = carX + p.x.toFloat() * scale
+                    val cy = carY - p.y.toFloat() * scale
                     val isActive = active?.id == camera.id
-                    val color: Color = when {
-                        isActive && guidance.overLimit -> VaPianColors.Danger
-                        isActive -> VaPianColors.Warning
-                        camera.source == CameraSource.OPENSTREETMAP -> VaPianColors.Safe
-                        else -> VaPianColors.UserCamera
+                    // same badge + arrow as the phone map; the arrow is the monitored direction relative to our heading
+                    val travel = camera.monitoredTravelDirectionDeg
+                    drawIntoCanvas {
+                        CameraGlyph.paintCombined(
+                            it.nativeCanvas, cx, cy, CameraColors.of(camera),
+                            rotationDeg = ((travel ?: 0) - heading).toFloat(), hasDirection = travel != null,
+                            scale = density * GLYPH_SCALE,
+                        )
                     }
-                    drawCircle(color, radius = if (isActive) 16.dp.toPx() else 9.dp.toPx(), center = center)
-                    if (isActive) drawCircle(color, radius = 26.dp.toPx(), center = center, style = Stroke(width = 3.dp.toPx()))
+                    if (isActive) {
+                        val alert = if (guidance.overLimit) VaPianColors.Danger else VaPianColors.Warning
+                        drawCircle(alert, radius = 30.dp.toPx(), center = Offset(cx, cy), style = Stroke(width = 4.dp.toPx()))
+                    }
                 }
             }
 
@@ -89,3 +99,6 @@ fun RadarView(
 }
 
 private const val DEFAULT_RANGE_METERS = 1000.0
+
+/** Glyphs are drawn larger on the dashboard than on the map: it is read at a glance, from a distance. */
+private const val GLYPH_SCALE = 1.5f

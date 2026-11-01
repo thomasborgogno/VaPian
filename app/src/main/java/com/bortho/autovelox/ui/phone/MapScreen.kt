@@ -5,31 +5,42 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -40,13 +51,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -54,57 +70,86 @@ import com.bortho.autovelox.core.geo.Geo
 import com.bortho.autovelox.core.model.CameraSource
 import com.bortho.autovelox.core.model.CameraStatus
 import com.bortho.autovelox.core.model.SpeedCamera
+import com.bortho.autovelox.ui.map.CameraColors
+import com.bortho.autovelox.ui.map.CameraGlyph
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.GoogleMapComposable
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
-private val SPEED_PRESETS = listOf(30, 50, 70, 90, 110, 130)
 private val ITALY = LatLng(42.5, 12.5)
 
-/** A camera being placed by hand; [fixed] is null while it follows the center of the map. */
-private data class Draft(val fixed: LatLng?)
+/** Below this zoom the full glyph is too small to read, so a plain dot is drawn instead (as in the Flutter app). */
+private const val DOT_ZOOM = 10f
 
 /**
- * Phone map: cameras around you coloured by origin and status, tap one for details and actions,
- * "+" (or a long press) to place a new one with its limit and direction. Works from the local database,
- * so markers are there with no network (only the map tiles need it).
+ * Phone map. Cameras are drawn with the same graphic as the Flutter app (coloured badge with the camera
+ * pictogram plus a separate arrow turned to the monitored direction; dots when zoomed out). Tapping a camera
+ * opens it for editing in a draggable draft overlay; a long press on the map places a new one (there is no add button). Everything is read
+ * from the local database, so markers are there without a network (only the map tiles need it).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MapScreen(viewModel: MapViewModel = hiltViewModel()) {
+fun MapScreen(
+    bottomClearance: Dp,
+    onEditingChange: (Boolean) -> Unit,
+    viewModel: MapViewModel = hiltViewModel(),
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current.density
     val cameras by viewModel.cameras.collectAsState()
     val tooFar by viewModel.tooFar.collectAsState()
     val pending by viewModel.pending.collectAsState()
-    val showIgnored by viewModel.showIgnored.collectAsState()
+    val filter by viewModel.filter.collectAsState()
 
     val hasLocation = remember { hasFineLocation(context) }
     val cameraState = rememberCameraPositionState {
         val start = lastKnownLocation(context)
-        position = if (start != null) CameraPosition.fromLatLngZoom(start, 13f) else CameraPosition.fromLatLngZoom(ITALY, 5.5f)
+        position = if (start != null) CameraPosition.fromLatLngZoom(start, 15f) else CameraPosition.fromLatLngZoom(ITALY, 5.5f)
     }
     var loaded by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<SpeedCamera?>(null) }
+    var details by remember { mutableStateOf<SpeedCamera?>(null) }
     var draft by remember { mutableStateOf<Draft?>(null) }
-    var draftLimit by remember { mutableStateOf<Int?>(null) }
-    var draftDirection by remember { mutableStateOf<Int?>(null) }
     var showPending by remember { mutableStateOf(false) }
+    var showFilters by remember { mutableStateOf(false) }
+
+    LaunchedEffect(draft != null) { onEditingChange(draft != null) }
+
+    fun startDraft(position: LatLng, existing: SpeedCamera?) {
+        val own = existing == null || viewModel.isOwn(existing)
+        draft = Draft(
+            position = position,
+            direction = existing?.direction?.toDouble() ?: 0.0,
+            limit = existing?.limit ?: 50,
+            reversed = existing?.directionReversed ?: false,
+            existing = existing,
+            readOnly = !own,
+            directionSet = existing == null || existing.direction != null,
+        )
+        if (existing != null) scope.launch { cameraState.animate(CameraUpdateFactory.newLatLng(position)) }
+    }
+
+    // same routing as the Flutter app: own cameras and anything with a direction open the draft editor;
+    // the rest only gets a read-only card
+    fun onCameraTap(camera: SpeedCamera) {
+        if (viewModel.isOwn(camera) || camera.direction != null) startDraft(LatLng(camera.lat, camera.lng), camera) else details = camera
+    }
 
     // no GPS fix: open on the area the user has data for instead of on the whole of Italy
     LaunchedEffect(Unit) {
         if (lastKnownLocation(context) == null) {
-            viewModel.dataCenter()?.let { (lat, lng) ->
-                cameraState.move(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 9.5f))
-            }
+            viewModel.dataCenter()?.let { (lat, lng) -> cameraState.move(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 9.5f)) }
         }
     }
 
@@ -119,124 +164,146 @@ fun MapScreen(viewModel: MapViewModel = hiltViewModel()) {
         }
     }
 
+    val showDots = cameraState.position.zoom < DOT_ZOOM
+
     Box(Modifier.fillMaxSize()) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraState,
+            contentPadding = PaddingValues(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                bottom = if (draft == null) bottomClearance else 0.dp,
+            ),
             properties = MapProperties(isMyLocationEnabled = hasLocation),
-            uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = hasLocation, mapToolbarEnabled = false),
+            // the native "my location" button and compass are always light: they are redrawn below with the app theme
+            uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false, compassEnabled = false, mapToolbarEnabled = false),
             onMapLoaded = { loaded = true },
-            onMapLongClick = { point ->
-                draft = Draft(point)
-                draftLimit = null
-                draftDirection = null
-            },
+            onMapLongClick = { point -> if (draft == null) startDraft(point, null) },
         ) {
             for (item in cameras) {
+                // the camera being edited is represented by the overlay, not by its normal markers
+                if (draft?.existing?.id == item.camera.id) continue
                 key(item.camera.id) {
-                    val marker = rememberMarkerState(position = LatLng(item.camera.lat, item.camera.lng))
-                    Marker(
-                        state = marker,
-                        icon = BitmapDescriptorFactory.defaultMarker(hueOf(item.camera)),
-                        alpha = if (item.ignored) 0.4f else 1f,
-                        onClick = {
-                            selected = item.camera
-                            true
-                        },
-                    )
-                }
-            }
-            // the direction of the selected camera / of the draft, as a line of 60 m
-            selected?.monitoredTravelDirectionDeg?.let { dir ->
-                directionLine(selected!!.lat, selected!!.lng, dir.toDouble())?.let { Polyline(points = it, color = Color(0xFF1E88E5), width = 10f) }
-            }
-            draft?.let { d ->
-                val at = d.fixed ?: cameraState.position.target
-                draftDirection?.let { dir ->
-                    directionLine(at.latitude, at.longitude, dir.toDouble())?.let { Polyline(points = it, color = Color(0xFFFF9800), width = 10f) }
-                }
-                if (d.fixed != null) {
-                    Marker(state = rememberMarkerState(position = d.fixed), icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ROSE))
+                    CameraMarkers(item, showDots, density) { onCameraTap(item.camera) }
                 }
             }
         }
 
-        // a fixed crosshair: the draft goes where the map center is, until the user long-presses a spot
-        if (draft != null && draft?.fixed == null) {
-            Text("✛", Modifier.align(Alignment.Center), style = MaterialTheme.typography.displaySmall, color = Color(0xFFFF6D00))
+        draft?.let { d ->
+            DraftOverlay(
+                draft = d,
+                cameraState = cameraState,
+                onMove = { draft = d.copy(position = it) },
+                onRotate = { draft = d.copy(direction = it, directionSet = true) },
+            )
         }
 
-        Column(Modifier.align(Alignment.TopCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (tooFar) {
-                Card { Text("Avvicina la mappa per vedere gli autovelox", Modifier.padding(12.dp)) }
-            }
-            if (pending.isNotEmpty()) {
-                Card(
-                    Modifier.clickable { showPending = true },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                ) {
-                    Text(
-                        "${pending.size} segnalazion${if (pending.size == 1) "e" else "i"} da confermare",
-                        Modifier.padding(12.dp),
-                        fontWeight = FontWeight.SemiBold,
-                    )
+        val rotated = cameraState.position.bearing.let { it > 0.5f && it < 359.5f } || cameraState.position.tilt > 0.5f
+
+        // top right: "Filtri" and "my location" side by side, the compass under them
+        Column(
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (draft == null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FiltersButton(active = filter.isActive, onClick = { showFilters = true })
+                    if (hasLocation) {
+                        MapControlButton(onClick = {
+                            lastKnownLocation(context)?.let { here ->
+                                scope.launch { cameraState.animate(CameraUpdateFactory.newLatLngZoom(here, maxOf(cameraState.position.zoom, 16f))) }
+                            }
+                        }) { Icon(Icons.Filled.MyLocation, contentDescription = "La mia posizione") }
+                    }
                 }
             }
-            Card {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Mostra ignorati")
-                    Switch(checked = showIgnored, onCheckedChange = { viewModel.showIgnored.value = it })
-                }
+            AnimatedVisibility(visible = rotated, enter = fadeIn(), exit = fadeOut()) {
+                MapControlButton(onClick = {
+                    val p = cameraState.position
+                    scope.launch {
+                        cameraState.animate(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(p).bearing(0f).tilt(0f).build()))
+                    }
+                }) { CompassNeedle(bearing = cameraState.position.bearing) }
             }
         }
 
         if (draft == null) {
-            FloatingActionButton(
-                onClick = {
-                    draft = Draft(null)
-                    draftLimit = null
-                    draftDirection = null
-                },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            ) { Icon(Icons.Filled.Add, contentDescription = "Nuovo autovelox") }
+            // status notes at the top left, clear of the buttons on the right
+            Column(
+                Modifier.align(Alignment.TopStart).fillMaxWidth(0.5f).statusBarsPadding().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (tooFar) Card { Text("Avvicina la mappa per vedere gli autovelox", Modifier.padding(12.dp)) }
+                if (pending.isNotEmpty()) {
+                    Card(
+                        Modifier.clickable { showPending = true },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    ) {
+                        Text(
+                            "${pending.size} segnalazion${if (pending.size == 1) "e" else "i"} da confermare",
+                            Modifier.padding(12.dp),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
         } else {
+            val d = draft!!
+            val existing = d.existing
+            val ignored = existing != null && cameras.firstOrNull { it.camera.id == existing.id }?.ignored == true
+            val isOsm = existing?.source == CameraSource.OPENSTREETMAP
             Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp).navigationBarsPadding()) {
-                CameraEditor(
-                    title = "Nuovo autovelox",
-                    hint = if (draft?.fixed == null) "Sposta la mappa: l'autovelox va nel mirino." else "Posizionato nel punto scelto.",
-                    initialLimit = draftLimit,
-                    initialDirection = draftDirection,
-                    saveLabel = "Salva",
-                    onChange = { limit, direction ->
-                        draftLimit = limit
-                        draftDirection = direction
-                    },
-                    onSave = { limit, direction ->
-                        val at = draft?.fixed ?: cameraState.position.target
-                        viewModel.add(at.latitude, at.longitude, limit, direction)
+                DraftPanel(
+                    draft = d,
+                    ignored = ignored,
+                    onLimit = { draft = d.copy(limit = it) },
+                    onReversed = { draft = d.copy(reversed = it) },
+                    onCancel = { draft = null },
+                    onSave = {
+                        val direction = if (d.directionSet) d.direction.roundToInt().mod(360) else null
+                        when {
+                            existing == null -> viewModel.add(d.position.latitude, d.position.longitude, d.limit, direction)
+                            d.readOnly -> viewModel.edit(existing.id, existing.limit, existing.direction, d.reversed)
+                            else -> viewModel.update(existing.id, d.position.latitude, d.position.longitude, d.limit, direction, d.reversed, approve = false)
+                        }
                         draft = null
                     },
-                    onCancel = { draft = null },
+                    onDelete = if (existing != null && viewModel.isOwn(existing)) {
+                        { viewModel.delete(existing.id); draft = null }
+                    } else null,
+                    onApprove = if (existing != null && !d.readOnly && existing.status == CameraStatus.PENDING) {
+                        {
+                            val direction = if (d.directionSet) d.direction.roundToInt().mod(360) else null
+                            viewModel.update(existing.id, d.position.latitude, d.position.longitude, d.limit, direction, d.reversed, approve = true)
+                            draft = null
+                        }
+                    } else null,
+                    onIgnore = if (isOsm && existing != null) {
+                        { viewModel.ignore(existing.id); draft = null }
+                    } else null,
+                    onRestore = if (isOsm && existing != null && ignored) {
+                        { viewModel.unignore(existing.id); draft = null }
+                    } else null,
                 )
             }
         }
     }
 
-    selected?.let { camera ->
-        ModalBottomSheet(onDismissRequest = { selected = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            CameraSheet(
+    details?.let { camera ->
+        ModalBottomSheet(onDismissRequest = { details = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            CameraDetails(
                 camera = camera,
-                own = viewModel.isOwn(camera),
                 ignored = cameras.firstOrNull { it.camera.id == camera.id }?.ignored == true,
-                onIgnore = { viewModel.ignore(camera.id); selected = null },
-                onRestore = { viewModel.unignore(camera.id); selected = null },
-                onDelete = { viewModel.delete(camera.id); selected = null },
-                onSave = { limit, direction ->
-                    if (camera.status == CameraStatus.PENDING) viewModel.confirm(camera.id, limit, direction)
-                    else viewModel.edit(camera.id, limit, direction, camera.directionReversed)
-                    selected = null
-                },
+                onIgnore = { viewModel.ignore(camera.id); details = null },
+                onRestore = { viewModel.unignore(camera.id); details = null },
             )
+        }
+    }
+
+    if (showFilters) {
+        ModalBottomSheet(onDismissRequest = { showFilters = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            FilterSheet(filter = filter, onChange = { viewModel.filter.value = it }, onDone = { showFilters = false })
         }
     }
 
@@ -246,60 +313,121 @@ fun MapScreen(viewModel: MapViewModel = hiltViewModel()) {
                 pending = pending,
                 onConfirm = { viewModel.confirm(it.id, null, null) },
                 onDelete = { viewModel.delete(it.id) },
-                onShow = { camera ->
+                onEdit = { camera ->
                     showPending = false
-                    selected = camera
+                    startDraft(LatLng(camera.lat, camera.lng), camera)
                 },
             )
         }
     }
 }
 
+/** A round map control (my location, compass) in the app's surface colours, so it follows the phone's light/dark theme. */
 @Composable
-private fun CameraSheet(
-    camera: SpeedCamera,
-    own: Boolean,
-    ignored: Boolean,
-    onIgnore: () -> Unit,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit,
-    onSave: (Int?, Int?) -> Unit,
-) {
-    var limit by remember(camera.id) { mutableStateOf(camera.limit) }
-    var direction by remember(camera.id) { mutableStateOf(camera.direction) }
+private fun MapControlButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 6.dp,
+        modifier = Modifier.size(48.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) { content() }
+    }
+}
 
-    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+/** "Filtri" pill: highlighted, with a dot on the icon, while a filter is active (as in the Flutter app). */
+@Composable
+private fun FiltersButton(active: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 6.dp,
+        modifier = Modifier.height(48.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BadgedBox(badge = { if (active) Badge() }) { Icon(Icons.Filled.FilterList, contentDescription = null) }
+            Text(if (active) "Filtro attivo" else "Filtri", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/** A compass needle that turns against the map's bearing: the red half always points to north. */
+@Composable
+private fun CompassNeedle(bearing: Float) {
+    val north = MaterialTheme.colorScheme.error
+    val south = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(Modifier.size(26.dp).rotate(-bearing)) {
+        val c = center
+        val h = size.height / 2
+        val w = size.width * 0.2f
+        drawPath(Path().apply { moveTo(c.x, c.y - h); lineTo(c.x - w, c.y); lineTo(c.x + w, c.y); close() }, north)
+        drawPath(Path().apply { moveTo(c.x, c.y + h); lineTo(c.x - w, c.y); lineTo(c.x + w, c.y); close() }, south)
+    }
+}
+
+/**
+ * One camera on the map: a dot when zoomed out; otherwise two markers at the same spot, the always-upright badge
+ * (billboard) and — only when a direction is known — a separately rotating arrow lying flat on the map.
+ */
+@Composable
+@GoogleMapComposable
+private fun CameraMarkers(item: MapCamera, showDots: Boolean, density: Float, onTap: () -> Unit) {
+    val camera = item.camera
+    val color = CameraColors.of(camera, ignored = item.ignored)
+    val position = LatLng(camera.lat, camera.lng)
+
+    if (showDots) {
+        val dot = remember(color, density) { BitmapDescriptorFactory.fromBitmap(CameraGlyph.dotBitmap(color, density)) }
+        Marker(
+            state = rememberMarkerState(key = "${camera.id}_dot", position = position),
+            icon = dot,
+            anchor = Offset(0.5f, 0.5f),
+            onClick = { onTap(); true },
+        )
+        return
+    }
+
+    val badge = remember(color, density) { BitmapDescriptorFactory.fromBitmap(CameraGlyph.iconBitmap(color, density)) }
+    Marker(
+        state = rememberMarkerState(key = "${camera.id}_icon", position = position),
+        icon = badge,
+        anchor = Offset(0.5f, 0.5f),
+        zIndex = 1f,
+        onClick = { onTap(); true },
+    )
+    // the monitored travel direction, not the raw direction tag: they differ when "reversed" is set
+    val travel = camera.monitoredTravelDirectionDeg ?: return
+    val arrow = remember(color, density) { BitmapDescriptorFactory.fromBitmap(CameraGlyph.arrowBitmap(color, density)) }
+    Marker(
+        state = rememberMarkerState(key = "${camera.id}_arrow", position = position),
+        icon = arrow,
+        anchor = Offset(0.5f, 1f),
+        // flat: glued to the ground, so the rotation is a true compass bearing at any map rotation
+        flat = true,
+        rotation = travel.toFloat(),
+        onClick = { onTap(); true },
+    )
+}
+
+@Composable
+private fun CameraDetails(camera: SpeedCamera, ignored: Boolean, onIgnore: () -> Unit, onRestore: () -> Unit) {
+    Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            if (camera.source == CameraSource.OPENSTREETMAP) "Autovelox di OpenStreetMap" else "Segnalazione utente",
+            camera.limit?.let { "Autovelox $it km/h" } ?: "Autovelox (limite non disponibile)",
             style = MaterialTheme.typography.titleLarge,
         )
-        Text(
-            buildString {
-                append(if (camera.status == CameraStatus.PENDING) "In attesa di conferma" else "Confermato")
-                append(" · limite ").append(camera.limit?.let { "$it km/h" } ?: "sconosciuto")
-                camera.direction?.let { append(" · direzione ").append(it).append('°') }
-                if (ignored) append(" · ignorato")
-            },
-        )
-        if (own) {
-            CameraEditor(
-                title = if (camera.status == CameraStatus.PENDING) "Conferma segnalazione" else "Modifica",
-                hint = "",
-                initialLimit = limit,
-                initialDirection = direction,
-                saveLabel = if (camera.status == CameraStatus.PENDING) "Conferma" else "Salva modifiche",
-                onChange = { l, d -> limit = l; direction = d },
-                onSave = onSave,
-                onCancel = null,
-            )
-            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) { Text("Elimina") }
-        }
+        Text("Sorgente: ${if (camera.source == CameraSource.OPENSTREETMAP) "OpenStreetMap" else "Utente"}")
+        Text("Stato: ${if (camera.status == CameraStatus.APPROVED) "Approvato" else "In verifica"}")
+        camera.direction?.let { Text("Direzione: $it°") }
         if (camera.source == CameraSource.OPENSTREETMAP) {
             if (ignored) {
-                Button(onClick = onRestore, Modifier.fillMaxWidth()) { Text("Ripristina (non ignorare più)") }
+                OutlinedButton(onClick = onRestore, Modifier.fillMaxWidth()) { Text("Togli dagli ignorati") }
             } else {
-                Button(onClick = onIgnore, Modifier.fillMaxWidth()) { Text("Ignora: non c'è più") }
-                Text("Nasconde questo autovelox solo per te e disattiva gli avvisi.", style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = onIgnore, Modifier.fillMaxWidth()) { Text("Ignora questo velox") }
             }
         }
     }
@@ -310,7 +438,7 @@ private fun PendingSheet(
     pending: List<SpeedCamera>,
     onConfirm: (SpeedCamera) -> Unit,
     onDelete: (SpeedCamera) -> Unit,
-    onShow: (SpeedCamera) -> Unit,
+    onEdit: (SpeedCamera) -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Segnalazioni da confermare", style = MaterialTheme.typography.titleLarge)
@@ -322,71 +450,13 @@ private fun PendingSheet(
                     Text("Limite stimato ${camera.limit?.let { "$it km/h" } ?: "sconosciuto"}")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { onConfirm(camera) }) { Text("Conferma") }
-                        OutlinedButton(onClick = { onShow(camera) }) { Text("Modifica") }
+                        OutlinedButton(onClick = { onEdit(camera) }) { Text("Modifica") }
                         TextButton(onClick = { onDelete(camera) }) { Text("Elimina") }
                     }
                 }
             }
         }
     }
-}
-
-/** Limit presets and an optional direction: shared by "new camera" and "edit/confirm". */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CameraEditor(
-    title: String,
-    hint: String,
-    initialLimit: Int?,
-    initialDirection: Int?,
-    saveLabel: String,
-    onChange: (Int?, Int?) -> Unit,
-    onSave: (Int?, Int?) -> Unit,
-    onCancel: (() -> Unit)?,
-) {
-    var limit by remember(initialLimit) { mutableStateOf(initialLimit) }
-    var direction by remember(initialDirection) { mutableStateOf(initialDirection) }
-
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        if (hint.isNotEmpty()) Text(hint, style = MaterialTheme.typography.bodySmall)
-        Text("Limite di velocità", style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (preset in SPEED_PRESETS) {
-                FilterChip(selected = limit == preset, onClick = { limit = if (limit == preset) null else preset; onChange(limit, direction) }, label = { Text("$preset") })
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Switch(
-                checked = direction != null,
-                onCheckedChange = { on -> direction = if (on) (direction ?: 0) else null; onChange(limit, direction) },
-            )
-            Text(direction?.let { "Direzione di marcia controllata: $it°" } ?: "Direzione non impostata")
-        }
-        direction?.let { value ->
-            Slider(
-                value = value.toFloat(),
-                onValueChange = { direction = it.toInt().coerceIn(0, 359); onChange(limit, direction) },
-                valueRange = 0f..359f,
-            )
-            Text("0° = nord, 90° = est, 180° = sud, 270° = ovest", style = MaterialTheme.typography.bodySmall)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { onSave(limit, direction) }) { Text(saveLabel) }
-            onCancel?.let { OutlinedButton(onClick = it) { Text("Annulla") } }
-        }
-    }
-}
-
-private fun hueOf(camera: SpeedCamera): Float = when {
-    camera.status == CameraStatus.PENDING -> BitmapDescriptorFactory.HUE_ORANGE
-    camera.source == CameraSource.OPENSTREETMAP -> BitmapDescriptorFactory.HUE_GREEN
-    else -> BitmapDescriptorFactory.HUE_AZURE
-}
-
-private fun directionLine(lat: Double, lng: Double, bearing: Double): List<LatLng>? {
-    val (endLat, endLng) = Geo.destination(lat, lng, bearing, 60.0)
-    return listOf(LatLng(lat, lng), LatLng(endLat, endLng))
 }
 
 private fun hasFineLocation(context: Context) =

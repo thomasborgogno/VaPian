@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bortho.autovelox.auth.UserSession
 import com.bortho.autovelox.core.geo.Geo
+import com.bortho.autovelox.core.model.CameraFilter
 import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.data.CameraRepository
 import com.bortho.autovelox.data.remote.SyncEngine
@@ -34,7 +35,7 @@ class MapViewModel @Inject constructor(
     private val sync: SyncEngine,
 ) : ViewModel() {
     private val viewport = MutableStateFlow<Viewport?>(null)
-    val showIgnored = MutableStateFlow(false)
+    val filter = MutableStateFlow(CameraFilter())
 
     private val ignoredIds: StateFlow<Set<String>> =
         repository.observeIgnoredIds(session.localKey).stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
@@ -53,8 +54,8 @@ class MapViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val cameras: StateFlow<List<MapCamera>> = combine(inView, ignoredIds, showIgnored) { list, ignored, withIgnored ->
-        list.map { MapCamera(it, it.id in ignored) }.filter { withIgnored || !it.ignored }
+    val cameras: StateFlow<List<MapCamera>> = combine(inView, ignoredIds, filter) { list, ignored, filter ->
+        list.map { MapCamera(it, it.id in ignored) }.filter { filter.shows(it.camera, it.ignored) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** True when zoomed out too far to draw markers (the screen then says so). */
@@ -72,6 +73,9 @@ class MapViewModel @Inject constructor(
     fun delete(id: String) = mutate { repository.deleteCamera(id) }
     fun confirm(id: String, limit: Int?, direction: Int?) = mutate { repository.confirm(id, limit, direction) }
     fun edit(id: String, limit: Int?, direction: Int?, reversed: Boolean) = mutate { repository.edit(id, limit, direction, reversed) }
+    fun update(id: String, lat: Double, lng: Double, limit: Int?, direction: Int?, reversed: Boolean, approve: Boolean) =
+        mutate { repository.updateCamera(id, lat, lng, limit, direction, reversed, approve) }
+
     fun add(lat: Double, lng: Double, limit: Int?, direction: Int?) =
         mutate { repository.addApprovedUserCamera(lat, lng, limit, direction, session.localKey) }
 

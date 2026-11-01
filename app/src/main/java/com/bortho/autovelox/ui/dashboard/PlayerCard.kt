@@ -23,13 +23,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +56,8 @@ fun PlayerCard(
     media: RadioMediaState?,
     phoneConnected: Boolean,
     onCommand: (String) -> Unit,
+    /** Jump to this position (ms) in the phone's track. */
+    onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(modifier.fillMaxWidth()) {
@@ -85,11 +88,22 @@ fun PlayerCard(
         val elapsed = if (track.isPlaying) (now - media.receivedAtMs).coerceAtLeast(0) else 0L
         val position = (track.positionMs + elapsed).let { if (track.durationMs > 0) it.coerceAtMost(track.durationMs) else it }
 
+        // Play/pause flips the moment it is tapped; the phone's confirmation (or a timeout) takes over afterwards.
+        var tapped by remember { mutableStateOf<Pair<Boolean, Long>?>(null) } // (expected isPlaying, when)
+        LaunchedEffect(track.isPlaying) { tapped = null }
+        LaunchedEffect(tapped) {
+            if (tapped != null) {
+                delay(PLAY_HOLD_MS)
+                tapped = null
+            }
+        }
+        val playing = tapped?.first ?: track.isPlaying
+
         BoxWithConstraints(Modifier.fillMaxSize()) {
         // The controls and the progress bar always fit; the cover takes whatever height is left over, and the
         // secondary lines (album, source app) appear only when there is room for them.
         val roomy = maxHeight >= ROOMY_HEIGHT
-        val coverSize = (maxHeight - if (roomy) 330.dp else 270.dp).coerceIn(0.dp, 150.dp)
+        val coverSize = (maxHeight - if (roomy) 330.dp else 270.dp).coerceIn(0.dp, maxOf(0.dp, maxWidth - 32.dp))
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             val cover = remember(media.cover) {
                 media.cover?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
@@ -121,9 +135,32 @@ fun PlayerCard(
             Spacer(Modifier.weight(1f))
 
             if (track.durationMs > 0) {
-                LinearProgressIndicator(progress = { position.toFloat() / track.durationMs }, modifier = Modifier.fillMaxWidth().height(8.dp))
+                // The bar is also a seek control: dragging shows the target, releasing asks the phone to jump there.
+                // For a moment after release the target stays on screen, so the bar does not snap back to the old
+                // position while the phone is still processing the jump.
+                var dragging by remember(track.title) { mutableStateOf<Float?>(null) }
+                var seeked by remember(track.title) { mutableStateOf<Pair<Long, Long>?>(null) } // (target ms, when)
+                val optimistic = seeked?.takeIf { System.currentTimeMillis() - it.second < SEEK_HOLD_MS }
+                val shown = when {
+                    dragging != null -> (dragging!! * track.durationMs).toLong()
+                    optimistic != null -> optimistic.first
+                    else -> position
+                }
+                Slider(
+                    value = (shown.toFloat() / track.durationMs).coerceIn(0f, 1f),
+                    onValueChange = { dragging = it },
+                    onValueChangeFinished = {
+                        dragging?.let {
+                            val target = (it * track.durationMs).toLong()
+                            seeked = target to System.currentTimeMillis()
+                            onSeek(target)
+                        }
+                        dragging = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(clock(position), fontSize = 16.sp)
+                    Text(clock(shown), fontSize = 16.sp)
                     Text(clock(track.durationMs), fontSize = 16.sp)
                 }
             }
@@ -131,10 +168,13 @@ fun PlayerCard(
                 FilledTonalIconButton(onClick = { onCommand(MediaCmd.PREV) }, modifier = Modifier.size(72.dp)) {
                     Icon(Icons.Filled.SkipPrevious, contentDescription = "Precedente", modifier = Modifier.size(40.dp))
                 }
-                FilledIconButton(onClick = { onCommand(MediaCmd.TOGGLE) }, modifier = Modifier.size(88.dp)) {
+                FilledIconButton(onClick = {
+                    tapped = !playing to System.currentTimeMillis()
+                    onCommand(MediaCmd.TOGGLE)
+                }, modifier = Modifier.size(88.dp)) {
                     Icon(
-                        if (track.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (track.isPlaying) "Pausa" else "Riproduci",
+                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (playing) "Pausa" else "Riproduci",
                         modifier = Modifier.size(52.dp),
                     )
                 }
@@ -148,6 +188,8 @@ fun PlayerCard(
 }
 
 private val ROOMY_HEIGHT = 450.dp
+private const val SEEK_HOLD_MS = 1_500L
+private const val PLAY_HOLD_MS = 2_500L
 private val MIN_COVER = 56.dp
 
 private fun clock(ms: Long): String {

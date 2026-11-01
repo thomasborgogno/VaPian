@@ -130,6 +130,33 @@ class CameraRepository @Inject constructor(
         )
     }
 
+    /**
+     * Saves everything the draft overlay can change: position (so the geohash is recomputed), limit, direction,
+     * the "opposite travel direction" flag, and optionally the review approval of a pending report.
+     */
+    suspend fun updateCamera(
+        id: String,
+        lat: Double,
+        lng: Double,
+        limitKmh: Int?,
+        directionDeg: Int?,
+        reversed: Boolean,
+        approve: Boolean,
+    ) {
+        val current = camera(id) ?: return
+        saveUserCamera(
+            current.copy(
+                lat = lat,
+                lng = lng,
+                geohash = GeoHash.encode(lat, lng),
+                limit = limitKmh,
+                direction = directionDeg,
+                directionReversed = reversed,
+                status = if (approve) CameraStatus.APPROVED else current.status,
+            ),
+        )
+    }
+
     /** Edits limit/direction of a camera the user owns, queued for replication. */
     suspend fun edit(id: String, limitKmh: Int?, directionDeg: Int?, reversed: Boolean) {
         val current = camera(id) ?: return
