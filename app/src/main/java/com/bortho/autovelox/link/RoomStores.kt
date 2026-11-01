@@ -127,6 +127,7 @@ class RoomRadioStore @Inject constructor(
     }
 
     override suspend fun markDatasetSynced(nowMs: Long) {
+        db.cameras().deleteStaleOwnReports()
         settings.lastDatasetSyncAt = nowMs
     }
 }

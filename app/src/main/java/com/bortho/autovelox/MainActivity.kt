@@ -28,7 +28,7 @@ import com.bortho.autovelox.diagnostics.DiagnosticsActivity
 import com.bortho.autovelox.guidance.GuidanceService
 import com.bortho.autovelox.link.LinkService
 import com.bortho.autovelox.ui.dashboard.DashboardScreen
-import com.bortho.autovelox.ui.phone.PhoneScreen
+import com.bortho.autovelox.ui.phone.PhoneRoot
 import com.bortho.autovelox.ui.theme.VaPianTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                             keepScreenOn()
                             DashboardScreen(onOpenDiagnostics = openDiagnostics)
                         }
-                        DeviceRole.PHONE -> PhoneScreen(
+                        DeviceRole.PHONE -> PhoneRoot(
                             onGuidanceToggle = { enabled ->
                                 if (enabled) {
                                     permissions.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))

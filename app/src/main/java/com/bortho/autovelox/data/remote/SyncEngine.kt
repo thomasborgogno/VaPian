@@ -131,6 +131,19 @@ class SyncEngine @Inject constructor(
         return doc.toUserSettings()
     }
 
+    /** Mirrors the alert settings to `users/{uid}.settings`; best effort, local settings already apply. */
+    suspend fun pushSettings(settings: UserSettings): Boolean {
+        val uid = session.ensureFirebaseUid() ?: return false
+        return try {
+            firestore.collection(FirestorePaths.USERS).document(uid)
+                .set(mapOf("settings" to settings.toFirestoreMap()), SetOptions.merge()).await()
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "settings push failed: ${e.message}")
+            false
+        }
+    }
+
     private suspend fun mergeSnapshot(cameras: List<SpeedCamera>, region: String?) {
         db.cameras().mergeRemote(cameras.map { it.toEntity(region = region) })
     }

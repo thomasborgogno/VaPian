@@ -124,8 +124,12 @@ Primario: `MediaController`/`MediaBrowser` sulla sessione AVRCP; comandi con `Tr
    scelta del telefono, **player** (cover, titolo, artista, progresso, prev/play/next) via canale RFCOMM, provato
    tra Pixel e tablet; la scheda si adatta all'altezza disponibile. ⬜ AVRCP come alternativa.
 6. **Segnali dell'auto** ✅ `VehicleSignals` (porte, marcia, velocità dal CAN) in sola lettura. ⬜ Significato dei codici da test in auto.
-7. **UI telefono** ⬜ Per ora: avvisi on/off, download regioni da OSM, stato del link. Mancano mappa Google, segnalazione con
-   direzione, impostazioni, navigazione, OSM OAuth/changeset.
+7. **UI telefono** ✅ tre schede. **Mappa** (Google Maps): marker per origine/stato (verde OSM, azzurro utente, arancione in
+   attesa), dettaglio con ignora/ripristina/elimina/modifica/conferma, aggiunta con limite e direzione (mirino o pressione
+   lunga), elenco delle segnalazioni da confermare (quelle arrivate dall'autoradio o dall'auto), apertura sui dati scaricati
+   se manca il GPS. **Dati**: download regioni da OSM, collegamento autoradio, accesso al player. **Impostazioni**: distanza
+   di preavviso fissa/dinamica e tolleranza, sincronizzate con l'autoradio e con l'account. ⬜ Login Google e collegamento
+   dall'ospite, navigazione con camera che segue l'utente, OSM OAuth/changeset (OSM di produzione).
 8. **Android Auto** ⬜.
 9. **Hardening** ⬜ Test strumentati su Room e sync, avvio a freddo in modalità aereo, batteria, emulatore API 26 landscape 1280×720.
 

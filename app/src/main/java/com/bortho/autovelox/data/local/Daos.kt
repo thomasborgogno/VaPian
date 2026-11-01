@@ -8,6 +8,9 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+/** Average position of a set of rows; both values are null when there are none. */
+data class Centroid(val lat: Double?, val lng: Double?)
+
 @Dao
 abstract class SpeedCameraDao {
     /**
@@ -61,6 +64,14 @@ abstract class SpeedCameraDao {
     @Query("UPDATE speed_cameras SET dirty = 0 WHERE id = :id")
     abstract suspend fun markClean(id: String)
 
+    /**
+     * Radio: its own reports that the phone acknowledged and that did not come back as an approved camera
+     * (region set) were deleted or never confirmed on the phone. They never alert, so they are dropped
+     * after each complete sync instead of lingering forever.
+     */
+    @Query("DELETE FROM speed_cameras WHERE source = 'user' AND dirty = 0 AND region IS NULL")
+    abstract suspend fun deleteStaleOwnReports()
+
     @Query("UPDATE speed_cameras SET deleted = 1, dirty = 1 WHERE id = :id")
     abstract suspend fun tombstone(id: String)
 
@@ -72,6 +83,10 @@ abstract class SpeedCameraDao {
 
     @Query("SELECT COUNT(*) FROM speed_cameras WHERE region = :region AND deleted = 0")
     abstract suspend fun countInRegion(region: String): Int
+
+    /** Average position of everything stored, used to open the map on the user's data when there is no GPS fix. */
+    @Query("SELECT AVG(lat) AS lat, AVG(lng) AS lng FROM speed_cameras WHERE deleted = 0")
+    abstract suspend fun centroid(): Centroid?
 
     @Query("SELECT * FROM speed_cameras WHERE region = :region AND deleted = 0")
     abstract suspend fun inRegion(region: String): List<SpeedCameraEntity>

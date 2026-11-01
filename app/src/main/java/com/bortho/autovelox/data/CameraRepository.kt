@@ -109,6 +109,53 @@ class CameraRepository @Inject constructor(
 
     suspend fun exists(id: String): Boolean = cameras.get(id) != null
 
+    /** (lat, lng) around which the stored cameras lie, or null when nothing is stored yet. */
+    suspend fun dataCenter(): Pair<Double, Double>? =
+        cameras.centroid()?.let { c -> if (c.lat != null && c.lng != null) c.lat to c.lng else null }
+
+    suspend fun camera(id: String): SpeedCamera? = cameras.get(id)?.toModel()
+
+    /**
+     * Review of a pending report (features.md 2.1): promotes it to `approved`, optionally correcting the
+     * limit and direction, and queues the change for replication.
+     */
+    suspend fun confirm(id: String, limitKmh: Int?, directionDeg: Int?) {
+        val current = camera(id) ?: return
+        saveUserCamera(
+            current.copy(
+                status = CameraStatus.APPROVED,
+                limit = limitKmh ?: current.limit,
+                direction = directionDeg ?: current.direction,
+            ),
+        )
+    }
+
+    /** Edits limit/direction of a camera the user owns, queued for replication. */
+    suspend fun edit(id: String, limitKmh: Int?, directionDeg: Int?, reversed: Boolean) {
+        val current = camera(id) ?: return
+        saveUserCamera(current.copy(limit = limitKmh, direction = directionDeg, directionReversed = reversed))
+    }
+
+    /** A camera placed by hand on the map: an explicit user action, so it is `approved` straight away. */
+    suspend fun addApprovedUserCamera(lat: Double, lng: Double, limitKmh: Int?, directionDeg: Int?, createdBy: String): SpeedCamera {
+        val now = clock.nowMillis()
+        val camera = SpeedCamera(
+            id = UUID.randomUUID().toString(),
+            lat = lat,
+            lng = lng,
+            limit = limitKmh,
+            direction = directionDeg,
+            status = CameraStatus.APPROVED,
+            source = CameraSource.USER,
+            geohash = GeoHash.encode(lat, lng),
+            createdBy = createdBy,
+            createdAt = now,
+            updatedAt = now,
+        )
+        saveUserCamera(camera)
+        return camera
+    }
+
     // --- blacklist & queued ignores --------------------------------------
 
     fun observeIgnoredIds(uid: String): Flow<Set<String>> = db.ignored().observeIds(uid).map { it.toSet() }

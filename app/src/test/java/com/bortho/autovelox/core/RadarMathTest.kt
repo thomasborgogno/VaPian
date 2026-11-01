@@ -36,4 +36,19 @@ class RadarMathTest {
     fun cameraBehindHasNegativeY() {
         assertEquals(-111.3, RadarMath.project(0.0, 0.0, 0.0, -d, 0.0).y, 0.5)
     }
+
+    @Test
+    fun destinationMovesAlongTheBearingByTheRequestedDistance() {
+        val (northLat, northLng) = com.bortho.autovelox.core.geo.Geo.destination(45.0, 9.0, 0.0, 100.0)
+        assertEquals(100.0, com.bortho.autovelox.core.geo.Geo.haversineMeters(45.0, 9.0, northLat, northLng), 0.5)
+        assertEquals(9.0, northLng, 1e-9)
+
+        val (eastLat, eastLng) = com.bortho.autovelox.core.geo.Geo.destination(45.0, 9.0, 90.0, 100.0)
+        assertEquals(100.0, com.bortho.autovelox.core.geo.Geo.haversineMeters(45.0, 9.0, eastLat, eastLng), 0.5)
+        assertEquals(45.0, eastLat, 1e-9)
+
+        // the bearing back from the destination is the one we went along
+        val (lat, lng) = com.bortho.autovelox.core.geo.Geo.destination(45.0, 9.0, 135.0, 250.0)
+        assertEquals(135.0, com.bortho.autovelox.core.geo.Geo.bearingDegrees(45.0, 9.0, lat, lng), 0.5)
+    }
 }

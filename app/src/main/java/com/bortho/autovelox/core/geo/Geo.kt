@@ -8,6 +8,7 @@ import kotlin.math.sqrt
 
 object Geo {
     private const val EARTH_RADIUS_METERS = 6_371_000.0
+    private const val METERS_PER_DEGREE = 111_320.0
 
     fun haversineMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
         val dLat = Math.toRadians(lat2 - lat1)
@@ -26,6 +27,17 @@ object Geo {
         val y = sin(deltaLambda) * cos(phi2)
         val x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda)
         return (Math.toDegrees(atan2(y, x)) + 360) % 360
+    }
+
+    /**
+     * The point [meters] away from (lat, lng) along compass [bearingDeg]; flat-earth approximation,
+     * exact enough for the few hundred meters used to draw a camera's direction on the map.
+     */
+    fun destination(lat: Double, lng: Double, bearingDeg: Double, meters: Double): Pair<Double, Double> {
+        val rad = Math.toRadians(bearingDeg)
+        val dLat = meters * cos(rad) / METERS_PER_DEGREE
+        val dLng = meters * sin(rad) / (METERS_PER_DEGREE * cos(Math.toRadians(lat)))
+        return (lat + dLat) to (lng + dLng)
     }
 
     /** Smallest angle between two compass bearings, 0..180. */
