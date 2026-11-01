@@ -1,0 +1,31 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Firebase client config: not committed (public repo), recreate from secret on CI
+app/google-services.json
+
+# Kotlin compiler sessions
+.kotlin/
+
+# Device-specific notes, hardware survey output and debug captures: never committed
+/local-notes/
+/radio-info/
+vapian-report-*.txt
+vapian-gps-*.txt
+vapian-vehicle-*.txt
+vapian-can-*.txt
+vapian-log-*.txt
+*.apk
