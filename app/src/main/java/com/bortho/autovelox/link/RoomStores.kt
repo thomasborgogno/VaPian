@@ -9,6 +9,11 @@ import com.bortho.autovelox.data.local.DatasetMetaEntity
 import com.bortho.autovelox.data.local.SyncOpType
 import com.bortho.autovelox.data.local.VaPianDatabase
 import com.bortho.autovelox.data.local.toModel
+import com.bortho.autovelox.data.remote.SyncEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,7 +27,15 @@ class RoomPhoneStore @Inject constructor(
     private val repository: CameraRepository,
     private val session: UserSession,
     private val settings: SettingsStore,
+    private val sync: SyncEngine,
 ) : PhoneStore {
+    /** Replication to Firestore must never delay the acknowledgement sent back to the radio. */
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private fun replicateSoon() {
+        background.launch { runCatching { sync.drain() } }
+    }
+
 
     override suspend fun saveReport(report: ReportCamera): Boolean {
         if (repository.exists(report.id)) return false
@@ -34,11 +47,13 @@ class RoomPhoneStore @Inject constructor(
             createdBy = session.localKey, // mapped to the real Firebase uid by the sync engine
             id = report.id,
         )
+        replicateSoon()
         return true
     }
 
     override suspend fun queueIgnore(cameraId: String, ts: Long) {
         repository.queueIgnore(session.localKey, cameraId)
+        replicateSoon()
     }
 
     override suspend fun regions(): List<RegionDataset> {

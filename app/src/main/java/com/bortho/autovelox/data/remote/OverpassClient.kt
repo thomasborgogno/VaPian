@@ -1,6 +1,7 @@
 package com.bortho.autovelox.data.remote
 
 import com.bortho.autovelox.core.model.SpeedCamera
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -24,9 +25,13 @@ class OverpassClient @Inject constructor() {
         val query = overpassQuery(region)
         val failures = mutableListOf<String>()
         for (endpoint in ENDPOINTS) {
+            val startedAt = System.currentTimeMillis()
             try {
-                return@withContext fetchFrom(endpoint, query)
+                val cameras = fetchFrom(endpoint, query)
+                Log.i(TAG, "$region: ${cameras.size} cameras from ${URL(endpoint).host} in ${System.currentTimeMillis() - startedAt} ms")
+                return@withContext cameras
             } catch (failure: RetryableOverpassFailure) {
+                Log.w(TAG, "$region: ${URL(endpoint).host} failed after ${System.currentTimeMillis() - startedAt} ms: ${failure.reason}")
                 failures += "${URL(endpoint).host}: ${failure.reason}"
             }
         }
@@ -82,6 +87,7 @@ class OverpassClient @Inject constructor() {
             "https://overpass.private.coffee/api/interpreter",
             "https://overpass.kumi.systems/api/interpreter",
         )
+        private const val TAG = "Overpass"
         private const val USER_AGENT = "VaPian/1.0 (com.bortho.autovelox)"
     }
 }

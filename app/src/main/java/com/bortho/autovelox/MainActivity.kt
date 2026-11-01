@@ -26,6 +26,7 @@ import com.bortho.autovelox.core.role.RoleDetector
 import com.bortho.autovelox.data.SettingsStore
 import com.bortho.autovelox.diagnostics.DiagnosticsActivity
 import com.bortho.autovelox.guidance.GuidanceService
+import com.bortho.autovelox.link.LinkService
 import com.bortho.autovelox.ui.dashboard.DashboardScreen
 import com.bortho.autovelox.ui.phone.PhoneScreen
 import com.bortho.autovelox.ui.theme.VaPianTheme
@@ -91,6 +92,7 @@ class MainActivity : ComponentActivity() {
                                     GuidanceService.stop(context)
                                 }
                             },
+                            onLinkToggle = { enabled -> if (enabled) LinkService.start(context) else LinkService.stop(context) },
                             onOpenDiagnostics = openDiagnostics,
                         )
                     }

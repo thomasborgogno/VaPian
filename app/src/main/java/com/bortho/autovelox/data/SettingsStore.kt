@@ -57,6 +57,11 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getStringSet(KEY_WANTED, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(KEY_WANTED, value).apply()
 
+    /** Phone: keep the radio link server running in the background (default on). */
+    var linkEnabled: Boolean
+        get() = prefs.getBoolean(KEY_LINK, true)
+        set(value) = prefs.edit().putBoolean(KEY_LINK, value).apply()
+
     /** Radio only: Bluetooth address of the paired phone. Stays local, never sent over the link. */
     var phoneAddress: String?
         get() = prefs.getString(KEY_PHONE, null)
@@ -71,6 +76,7 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_LAST_OSM = "last_osm_download"
         const val KEY_WANTED = "wanted_regions"
         const val KEY_PHONE = "phone_address"
+        const val KEY_LINK = "link_enabled"
     }
 }
 

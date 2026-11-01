@@ -2,9 +2,10 @@ package com.bortho.autovelox.app
 
 import android.content.Context
 import com.bortho.autovelox.core.role.DeviceRole
+import com.bortho.autovelox.data.SettingsStore
 import com.bortho.autovelox.data.remote.SyncEngine
 import com.bortho.autovelox.guidance.GuidanceController
-import com.bortho.autovelox.link.PhoneLinkServer
+import com.bortho.autovelox.link.LinkService
 import com.bortho.autovelox.link.RadioLinkClient
 import com.bortho.autovelox.sync.SyncWorker
 import com.bortho.autovelox.vehicle.VehicleSignals
@@ -27,10 +28,10 @@ import javax.inject.Singleton
 class AppController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val guidance: GuidanceController,
-    private val phoneLink: PhoneLinkServer,
     private val radioLink: RadioLinkClient,
     private val vehicle: VehicleSignals,
     private val sync: SyncEngine,
+    private val settings: SettingsStore,
 ) {
     private var scope: CoroutineScope? = null
     private var currentRole: DeviceRole? = null
@@ -45,7 +46,8 @@ class AppController @Inject constructor(
         when (role) {
             DeviceRole.PHONE -> {
                 SyncWorker.schedule(context)
-                phoneLink.start(newScope)
+                // The link server lives in a foreground service: a cached app process gets frozen by Android.
+                if (settings.linkEnabled) LinkService.start(context)
                 outboxJob = newScope.launch { guidance.outboxChanged.collect { runCatching { sync.drain() } } }
             }
             DeviceRole.DASHBOARD -> {
@@ -59,7 +61,6 @@ class AppController @Inject constructor(
     @Synchronized
     fun stop() {
         outboxJob?.cancel()
-        phoneLink.stop()
         radioLink.stop()
         vehicle.stop()
         scope?.cancel()

@@ -40,6 +40,14 @@ class PhoneViewModel @Inject constructor(
     val lastOsmDownloadAt: StateFlow<Long> = _lastOsm.asStateFlow()
 
     val guidanceRunning: StateFlow<Boolean> = guidance.running
+
+    private val _linkEnabled = MutableStateFlow(settings.linkEnabled)
+    val linkEnabled: StateFlow<Boolean> = _linkEnabled.asStateFlow()
+
+    fun setLinkEnabled(enabled: Boolean) {
+        settings.linkEnabled = enabled
+        _linkEnabled.value = enabled
+    }
     val linkStatus: StateFlow<LinkStatus> = phoneLink.status
 
     fun download(region: String) {

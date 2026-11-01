@@ -76,8 +76,7 @@ class GuidanceController @Inject constructor(
     private var camerasJob: Job? = null
     private var ignoredJob: Job? = null
     private var ignoredIds: Set<String> = emptySet()
-    private var queryCenter: Location? = null
-    private var lastRawBearing: Float? = null
+    private var queryCenter: Pair<Double, Double>? = null
 
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -128,29 +127,36 @@ class GuidanceController @Inject constructor(
         // Prefer the car's own speed (accurate, available when stopped) over GPS speed when the CAN bridge provides it.
         val canSpeed = vehicle.state.value.speedKmh?.toDouble()
         val speedKmh = canSpeed ?: (location.speed * 3.6)
-        val fix = LocationFix(
-            lat = location.latitude,
-            lng = location.longitude,
-            speedKmh = speedKmh,
-            bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null,
-            timeMs = location.time,
+        process(
+            LocationFix(
+                lat = location.latitude,
+                lng = location.longitude,
+                speedKmh = speedKmh,
+                bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null,
+                timeMs = location.time,
+            ),
         )
+    }
+
+    /** Feeds a position that did not come from the GPS receiver (debug builds drive this from `adb`). */
+    fun injectFix(fix: LocationFix) = process(fix)
+
+    private fun process(fix: LocationFix) {
         _fix.value = fix
-        lastRawBearing = if (location.hasBearing()) location.bearing else lastRawBearing
-        refreshCamerasIfNeeded(location)
+        refreshCamerasIfNeeded(fix.lat, fix.lng)
 
         val result = engine.onFix(fix, _nearby.value, ignoredIds, settings.alertSettings.value)
         _state.value = result
         if (result.speak && result.camera != null && result.distanceMeters != null) speak(result.camera, result.distanceMeters)
     }
 
-    private fun refreshCamerasIfNeeded(location: Location) {
+    private fun refreshCamerasIfNeeded(lat: Double, lng: Double) {
         val last = queryCenter
-        if (last != null && Geo.haversineMeters(last.latitude, last.longitude, location.latitude, location.longitude) < REQUERY_METERS) return
-        queryCenter = location
+        if (last != null && Geo.haversineMeters(last.first, last.second, lat, lng) < REQUERY_METERS) return
+        queryCenter = lat to lng
         camerasJob?.cancel()
         camerasJob = scope?.launch {
-            repository.observeNear(location.latitude, location.longitude, SEARCH_RADIUS_METERS).collect { _nearby.value = it }
+            repository.observeNear(lat, lng, SEARCH_RADIUS_METERS).collect { _nearby.value = it }
         }
     }
 

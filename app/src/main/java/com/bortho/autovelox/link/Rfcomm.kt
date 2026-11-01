@@ -79,6 +79,17 @@ class RfcommTransport(private val socket: BluetoothSocket) : FrameTransport {
 
 enum class LinkStatus { IDLE, WAITING, CONNECTING, CONNECTED, SYNCED }
 
+/** Logs a state description only when it changes (idle loops would otherwise flood the log). */
+private class StateLog(private val tag: String) {
+    private var last: String? = null
+    fun note(message: String) {
+        if (message != last) {
+            last = message
+            Log.i(tag, message)
+        }
+    }
+}
+
 private fun hasBluetoothPermission(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
@@ -99,9 +110,11 @@ class PhoneLinkServer @Inject constructor(
     private val _status = MutableStateFlow(LinkStatus.IDLE)
     val status: StateFlow<LinkStatus> = _status.asStateFlow()
     private var job: kotlinx.coroutines.Job? = null
+    private val log = StateLog("PhoneLinkServer")
 
     fun start(scope: CoroutineScope) {
         if (job?.isActive == true) return
+        log.note("start")
         job = scope.launch(Dispatchers.IO) { serve() }
     }
 
@@ -115,6 +128,7 @@ class PhoneLinkServer @Inject constructor(
         while (currentCoroutineContext().isActive) {
             val adapter = adapter(context)
             if (adapter == null || !adapter.isEnabled || !hasBluetoothPermission(context)) {
+                log.note("idle: adapter=${adapter != null} enabled=${adapter?.isEnabled} permission=${hasBluetoothPermission(context)}")
                 _status.value = LinkStatus.IDLE
                 delay(RETRY_DELAY_MS)
                 continue
@@ -122,7 +136,9 @@ class PhoneLinkServer @Inject constructor(
             try {
                 adapter.listenUsingRfcommWithServiceRecord("VaPian", VAPIAN_SERVICE_UUID).use { server ->
                     _status.value = LinkStatus.WAITING
+                    log.note("listening for the radio")
                     val socket = server.accept() // blocks until the radio connects; cancelled by closing
+                    log.note("radio connected")
                     _status.value = LinkStatus.CONNECTED
                     val transport = RfcommTransport(socket)
                     try {
@@ -136,6 +152,7 @@ class PhoneLinkServer @Inject constructor(
             } catch (e: SecurityException) {
                 Log.w(TAG, "link server: permission revoked")
             }
+            log.note("session ended, restarting listener")
             _status.value = LinkStatus.IDLE
             delay(RETRY_DELAY_MS)
         }
@@ -163,9 +180,11 @@ class RadioLinkClient @Inject constructor(
     val status: StateFlow<LinkStatus> = _status.asStateFlow()
     private var job: kotlinx.coroutines.Job? = null
     @Volatile private var active: RadioLinkSession? = null
+    private val log = StateLog("RadioLinkClient")
 
     fun start(scope: CoroutineScope) {
         if (job?.isActive == true) return
+        log.note("start")
         job = scope.launch(Dispatchers.IO) { maintain() }
     }
 
@@ -186,18 +205,22 @@ class RadioLinkClient @Inject constructor(
             val adapter = adapter(context)
             val address = settings.phoneAddress
             if (adapter == null || !adapter.isEnabled || address == null || !hasBluetoothPermission(context)) {
+                log.note("idle: adapter=${adapter != null} enabled=${adapter?.isEnabled} phoneChosen=${address != null} permission=${hasBluetoothPermission(context)}")
                 _status.value = LinkStatus.IDLE
                 delay(IDLE_POLL_MS)
                 continue
             }
+            log.note("connecting to the phone")
             val connected = try {
                 connectOnce(adapter, adapter.getRemoteDevice(address))
             } catch (e: IOException) {
                 Log.w(TAG, "connect failed: ${e.message}")
                 false
             } catch (e: SecurityException) {
+                Log.w(TAG, "connect denied: ${e.message}")
                 false
             }
+            log.note("disconnected; retry in ${backoff} ms")
             _status.value = LinkStatus.WAITING
             backoff = if (connected) MIN_BACKOFF_MS else (backoff * 2).coerceAtMost(MAX_BACKOFF_MS)
             delay(backoff)
@@ -208,9 +231,10 @@ class RadioLinkClient @Inject constructor(
     @SuppressLint("MissingPermission")
     private suspend fun connectOnce(adapter: BluetoothAdapter, device: BluetoothDevice): Boolean {
         _status.value = LinkStatus.CONNECTING
-        adapter.cancelDiscovery() // discovery slows down and can break a connect
+        // No cancelDiscovery(): the app never starts a scan, and on Android 12+ that call needs BLUETOOTH_SCAN.
         val socket = device.createRfcommSocketToServiceRecord(VAPIAN_SERVICE_UUID)
         socket.connect()
+        log.note("connected to the phone")
         _status.value = LinkStatus.CONNECTED
         val transport = RfcommTransport(socket)
         val wanted = settings.wantedRegions.takeIf { it.isNotEmpty() }

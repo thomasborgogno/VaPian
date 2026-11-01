@@ -232,7 +232,7 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
                         viewModel.commitReport()
                     }
                 },
-                modifier = Modifier.height(96.dp).width(360.dp),
+                modifier = Modifier.height(96.dp).width(420.dp),
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Danger, contentColor = Color.White),
             ) { Text("SEGNALA AUTOVELOX", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
@@ -243,10 +243,10 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
                     pending = null
                     if (toUndo != null) scope.launch { viewModel.undo(toUndo) }
                 },
-                modifier = Modifier.height(96.dp).width(360.dp),
+                modifier = Modifier.height(96.dp).width(420.dp),
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Warning, contentColor = Color.Black),
-            ) { Text("SEGNALATO — ANNULLA ($secondsLeft)", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            ) { Text("ANNULLA SEGNALAZIONE ($secondsLeft)", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
         }
         if (activeCamera?.source == CameraSource.OPENSTREETMAP) {
             Button(

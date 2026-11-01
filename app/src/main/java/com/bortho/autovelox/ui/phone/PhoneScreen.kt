@@ -39,6 +39,7 @@ import java.util.Date
 @Composable
 fun PhoneScreen(
     onGuidanceToggle: (Boolean) -> Unit,
+    onLinkToggle: (Boolean) -> Unit,
     onOpenDiagnostics: () -> Unit,
     viewModel: PhoneViewModel = hiltViewModel(),
 ) {
@@ -48,6 +49,7 @@ fun PhoneScreen(
     val lastOsm by viewModel.lastOsmDownloadAt.collectAsState()
     val running by viewModel.guidanceRunning.collectAsState()
     val link by viewModel.linkStatus.collectAsState()
+    val linkEnabled by viewModel.linkEnabled.collectAsState()
 
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp),
@@ -80,6 +82,16 @@ fun PhoneScreen(
                         },
                     )
                     Text("L'autoradio riceve da qui le regioni scaricate.", style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Sempre pronto in background", Modifier.weight(1f))
+                        Switch(
+                            checked = linkEnabled,
+                            onCheckedChange = {
+                                viewModel.setLinkEnabled(it)
+                                onLinkToggle(it)
+                            },
+                        )
+                    }
                 }
             }
         }
