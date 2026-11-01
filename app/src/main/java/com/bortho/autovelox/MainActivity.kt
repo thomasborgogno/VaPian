@@ -92,6 +92,9 @@ class MainActivity : ComponentActivity() {
                                     GuidanceService.stop(context)
                                 }
                             },
+                            onOpenNotificationAccess = {
+                                context.startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                            },
                             onLinkToggle = { enabled -> if (enabled) LinkService.start(context) else LinkService.stop(context) },
                             onOpenDiagnostics = openDiagnostics,
                         )

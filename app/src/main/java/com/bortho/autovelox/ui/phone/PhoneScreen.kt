@@ -40,6 +40,7 @@ import java.util.Date
 fun PhoneScreen(
     onGuidanceToggle: (Boolean) -> Unit,
     onLinkToggle: (Boolean) -> Unit,
+    onOpenNotificationAccess: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     viewModel: PhoneViewModel = hiltViewModel(),
 ) {
@@ -50,6 +51,13 @@ fun PhoneScreen(
     val running by viewModel.guidanceRunning.collectAsState()
     val link by viewModel.linkStatus.collectAsState()
     val linkEnabled by viewModel.linkEnabled.collectAsState()
+    val mediaAccess by viewModel.mediaAccess.collectAsState()
+
+    // the user comes back from the system settings screen: re-read the permission
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        viewModel.refreshMediaAccess()
+        onPauseOrDispose { }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp),
@@ -91,6 +99,20 @@ fun PhoneScreen(
                                 onLinkToggle(it)
                             },
                         )
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Musica sull'autoradio", style = MaterialTheme.typography.titleMedium)
+                    if (mediaAccess) {
+                        Text("Attiva: il display dell'autoradio mostra e controlla il player del telefono.")
+                    } else {
+                        Text("Per mostrare il brano in riproduzione serve l'accesso alle notifiche (solo per leggere il player).")
+                        Button(onClick = onOpenNotificationAccess) { Text("Concedi accesso") }
                     }
                 }
             }

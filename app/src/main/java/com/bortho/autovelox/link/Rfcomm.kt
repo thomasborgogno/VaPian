@@ -106,6 +106,7 @@ class PhoneLinkServer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val store: RoomPhoneStore,
     private val session: UserSession,
+    private val media: PhoneMediaSource,
 ) {
     private val _status = MutableStateFlow(LinkStatus.IDLE)
     val status: StateFlow<LinkStatus> = _status.asStateFlow()
@@ -142,7 +143,7 @@ class PhoneLinkServer @Inject constructor(
                     _status.value = LinkStatus.CONNECTED
                     val transport = RfcommTransport(socket)
                     try {
-                        PhoneLinkSession(transport, store, session.deviceId) { System.currentTimeMillis() }.run()
+                        PhoneLinkSession(transport, store, session.deviceId, nowMs = { System.currentTimeMillis() }, media = media).run()
                     } finally {
                         transport.close()
                     }
@@ -175,6 +176,7 @@ class RadioLinkClient @Inject constructor(
     private val store: RoomRadioStore,
     private val session: UserSession,
     private val settings: SettingsStore,
+    private val radioMedia: RadioMedia,
 ) {
     private val _status = MutableStateFlow(LinkStatus.IDLE)
     val status: StateFlow<LinkStatus> = _status.asStateFlow()
@@ -196,6 +198,11 @@ class RadioLinkClient @Inject constructor(
     /** Pushes any new local report right away if connected (otherwise it goes out at the next connection). */
     suspend fun flushNow() {
         active?.flushOutbox()
+    }
+
+    /** Play/pause/next/... on the phone's player; ignored while not connected. */
+    suspend fun sendMediaCommand(cmd: MediaCmd) {
+        active?.sendMediaCommand(cmd)
     }
 
     @SuppressLint("MissingPermission")
@@ -246,6 +253,7 @@ class RadioLinkClient @Inject constructor(
             nowMs = { System.currentTimeMillis() },
             wantedRegions = wanted,
             onSyncComplete = { _status.value = LinkStatus.SYNCED },
+            mediaListener = radioMedia,
         )
         active = link
         val scope = CoroutineScope(currentCoroutineContext())
@@ -263,6 +271,7 @@ class RadioLinkClient @Inject constructor(
         } finally {
             heartbeat.cancel()
             active = null
+            radioMedia.clear()
             transport.close()
         }
         return true

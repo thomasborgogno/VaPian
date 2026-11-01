@@ -121,7 +121,8 @@ Primario: `MediaController`/`MediaBrowser` sulla sessione AVRCP; comandi con `Tr
    (outbox con ack, idempotenza, rate limit, dataset corrotto scartato); trasporto RFCOMM con riconnessione e watchdog.
    ⬜ Prova su due dispositivi reali.
 5. **Dashboard** ✅ Radar in Canvas, velocità, limite, avviso, segnala con annulla a 5 s, ignora, barra del volume, banner a 14 giorni,
-   scelta del telefono. ⬜ Player (AVRCP o canale RFCOMM).
+   scelta del telefono, **player** (cover, titolo, artista, progresso, prev/play/next) via canale RFCOMM, provato
+   tra Pixel e tablet; la scheda si adatta all'altezza disponibile. ⬜ AVRCP come alternativa.
 6. **Segnali dell'auto** ✅ `VehicleSignals` (porte, marcia, velocità dal CAN) in sola lettura. ⬜ Significato dei codici da test in auto.
 7. **UI telefono** ⬜ Per ora: avvisi on/off, download regioni da OSM, stato del link. Mancano mappa Google, segnalazione con
    direzione, impostazioni, navigazione, OSM OAuth/changeset.

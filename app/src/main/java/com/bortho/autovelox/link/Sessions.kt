@@ -2,6 +2,9 @@ package com.bortho.autovelox.link
 
 import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.core.model.UserSettings
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
@@ -16,6 +19,20 @@ interface FrameTransport {
 
 /** A region as stored on the phone. */
 class RegionDataset(val name: String, val version: Long, val cameras: List<SpeedCamera>)
+
+/** Phone side: what is playing on the phone and how to control it. */
+interface MediaSource {
+    /** Emits whenever something changed, and about once a second while playing (position updates). */
+    val state: Flow<MediaState>
+    suspend fun cover(coverId: String): ByteArray?
+    fun command(cmd: MediaCmd)
+}
+
+/** Radio side: receives what the phone is playing. Callbacks run on the link's receive loop: keep them fast. */
+interface MediaListener {
+    fun onState(state: MediaState)
+    fun onCover(coverId: String, jpeg: ByteArray)
+}
 
 /** What the phone side needs from local storage. */
 interface PhoneStore {
@@ -56,19 +73,29 @@ class PhoneLinkSession(
     private val store: PhoneStore,
     private val deviceId: String,
     private val nowMs: () -> Long,
+    private val media: MediaSource? = null,
 ) {
     private var lastReportAt: Long? = null
     private val sendLock = Mutex()
 
-    suspend fun run() {
+    suspend fun run() = coroutineScope {
+        // Media state is pushed only after the radio announced the capability in HELLO.
+        var mediaJob: kotlinx.coroutines.Job? = null
         while (true) {
-            val frame = transport.receive() ?: return
+            val frame = transport.receive() ?: break
             try {
+                if (frame.type == MsgType.HELLO && media != null && mediaJob == null) {
+                    val hello = Messages.decode<Hello>(frame)
+                    if ("media" in hello.caps) {
+                        mediaJob = launch { media.state.collect { send(Messages.encode(MsgType.MEDIA_STATE, it)) } }
+                    }
+                }
                 handle(frame)
             } catch (e: kotlinx.serialization.SerializationException) {
                 send(Messages.encode(MsgType.ERROR, ErrorMsg(ErrorCode.BAD_PAYLOAD, "undecodable ${frame.type}")))
             }
         }
+        mediaJob?.cancel()
     }
 
     private suspend fun send(bytes: ByteArray) = sendLock.withLock { transport.send(bytes) }
@@ -93,6 +120,11 @@ class PhoneLinkSession(
                     store.queueIgnore(ignore.cameraId, ignore.ts)
                     send(Messages.encode(MsgType.ACK, Ack(ignore.cameraId)))
                 }
+            }
+            MsgType.MEDIA_CMD -> media?.command(Messages.decode(frame))
+            MsgType.COVER_REQ -> {
+                val id = Messages.decode<CoverReq>(frame).coverId
+                media?.cover(id)?.let { send(Messages.encode(MsgType.COVER, Cover(id, it))) }
             }
             MsgType.MANIFEST_REQ -> sendManifest()
             MsgType.DATASET_FETCH -> sendRegion(Messages.decode<DatasetFetch>(frame).name)
@@ -163,6 +195,7 @@ class RadioLinkSession(
     /** Regions the user wants on the radio; null = every region the phone offers. */
     private val wantedRegions: Set<String>? = null,
     private val onSyncComplete: () -> Unit = {},
+    private val mediaListener: MediaListener? = null,
 ) {
     private class Incoming(val name: String, val version: Long, val count: Int, val bytes: Int, val crc: Long) {
         val buffer = ByteArrayOutputStream(bytes)
@@ -192,6 +225,11 @@ class RadioLinkSession(
         }
     }
 
+    /** Transport control for the phone's player (play, pause, next, ...). */
+    suspend fun sendMediaCommand(cmd: MediaCmd) = send(Messages.encode(MsgType.MEDIA_CMD, cmd))
+
+    private var requestedCoverId: String? = null
+
     /** Heartbeat: the phone answers with PONG, which the connection watchdog uses to detect a dead link. */
     suspend fun ping() = send(Messages.empty(MsgType.PING))
 
@@ -220,6 +258,8 @@ class RadioLinkSession(
                 MsgType.DATASET_BEGIN -> onBegin(Messages.decode(frame))
                 MsgType.DATASET_CHUNK -> onChunk(Messages.decode(frame))
                 MsgType.DATASET_END -> onEnd(Messages.decode(frame))
+                MsgType.MEDIA_STATE -> onMediaState(Messages.decode(frame))
+                MsgType.COVER -> Messages.decode<Cover>(frame).let { mediaListener?.onCover(it.coverId, it.jpeg) }
                 MsgType.BLACKLIST_SNAPSHOT -> {
                     store.replaceBlacklist(Messages.decode<BlacklistSnapshot>(frame).cameraIds)
                     blacklistDone = true
@@ -246,6 +286,15 @@ class RadioLinkSession(
             }
         } catch (e: kotlinx.serialization.SerializationException) {
             protocolErrors++
+        }
+    }
+
+    private suspend fun onMediaState(state: MediaState) {
+        mediaListener?.onState(state)
+        // ask for the cover bytes only once per cover id
+        if (state.coverId.isNotBlank() && state.coverId != requestedCoverId) {
+            requestedCoverId = state.coverId
+            send(Messages.encode(MsgType.COVER_REQ, CoverReq(state.coverId)))
         }
     }
 

@@ -9,6 +9,7 @@ import com.bortho.autovelox.data.local.VaPianDatabase
 import com.bortho.autovelox.guidance.GuidanceController
 import com.bortho.autovelox.link.LinkStatus
 import com.bortho.autovelox.link.PhoneLinkServer
+import com.bortho.autovelox.link.PhoneMediaSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +27,7 @@ class PhoneViewModel @Inject constructor(
     private val settings: SettingsStore,
     guidance: GuidanceController,
     phoneLink: PhoneLinkServer,
+    private val media: PhoneMediaSource,
 ) : ViewModel() {
     val regions: StateFlow<List<DatasetMetaEntity>> =
         db.datasetMeta().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -49,6 +51,14 @@ class PhoneViewModel @Inject constructor(
         _linkEnabled.value = enabled
     }
     val linkStatus: StateFlow<LinkStatus> = phoneLink.status
+
+    private val _mediaAccess = MutableStateFlow(media.hasAccess())
+    /** Whether the user granted notification access, which Android requires to read other apps' players. */
+    val mediaAccess: StateFlow<Boolean> = _mediaAccess.asStateFlow()
+
+    fun refreshMediaAccess() {
+        _mediaAccess.value = media.hasAccess()
+    }
 
     fun download(region: String) {
         if (region in _downloading.value) return

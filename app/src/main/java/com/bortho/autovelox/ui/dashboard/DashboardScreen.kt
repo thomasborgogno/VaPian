@@ -62,6 +62,7 @@ import com.bortho.autovelox.core.model.CameraSource
 import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.data.DataFreshness
 import com.bortho.autovelox.link.LinkStatus
+import com.bortho.autovelox.link.RadioMediaState
 import com.bortho.autovelox.ui.theme.VaPianColors
 import com.bortho.autovelox.vehicle.VehicleState
 import kotlinx.coroutines.delay
@@ -79,6 +80,8 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
     val nearby by viewModel.nearby.collectAsState()
     val vehicle by viewModel.vehicle.collectAsState()
     val link by viewModel.linkStatus.collectAsState()
+    val media by viewModel.media.collectAsState()
+    val scope = rememberCoroutineScope()
 
     // The "data age" is read at composition and refreshed when the link finishes a sync.
     val lastSync = remember(link) { viewModel.lastDatasetSyncAt }
@@ -99,6 +102,8 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
             }
             SidePanel(
                 link = link,
+                media = media,
+                onMediaCommand = { cmd -> scope.launch { viewModel.mediaCommand(cmd) } },
                 paired = viewModel.phoneAddress != null,
                 onPair = { showPairing = true },
                 onDiagnostics = onOpenDiagnostics,
@@ -260,15 +265,14 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
 }
 
 @Composable
-private fun SidePanel(link: LinkStatus, paired: Boolean, onPair: () -> Unit, onDiagnostics: () -> Unit, modifier: Modifier) {
+private fun SidePanel(link: LinkStatus, media: RadioMediaState?, onMediaCommand: (String) -> Unit, paired: Boolean, onPair: () -> Unit, onDiagnostics: () -> Unit, modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(Modifier.fillMaxWidth().weight(1f)) {
-            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                // The player (AVRCP / phone link) is a later step: its slot is kept so the layout is final.
-                Text("♪", fontSize = 64.sp)
-                Text("Player non ancora collegato", textAlign = TextAlign.Center, fontSize = 20.sp)
-            }
-        }
+        PlayerCard(
+            media = media,
+            phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
+            onCommand = onMediaCommand,
+            modifier = Modifier.weight(1f),
+        )
         Text(linkText(link, paired), fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground)
         Button(onClick = onPair, Modifier.fillMaxWidth().height(56.dp)) { Text(if (paired) "Cambia telefono" else "Scegli telefono", fontSize = 18.sp) }
         TextButton(onClick = onDiagnostics, Modifier.fillMaxWidth()) { Text("Diagnostica") }

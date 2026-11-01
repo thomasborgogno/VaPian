@@ -114,19 +114,21 @@ Le righe locali dell'autoradio con `dirty=1` (segnalazioni non ancora confermate
 
 Dimensioni: 10.000 record = 320 KB. RFCOMM regge in pratica 50–150 KB/s: **pochi secondi**.
 
-## 6. Media (opzionale)
+## 6. Media (implementato)
 
-Percorso primario da decidere dopo i test sul campo; sono previsti entrambi dietro un'interfaccia `MediaSource`:
+Il player è quello del **telefono**, mostrato e controllato dall'autoradio sul canale RFCOMM (indipendente dallo stack
+AVRCP della ROM, che resta un'alternativa da valutare). Il telefono lo spinge solo se la radio ha annunciato `media`
+nelle `caps` dell'`HELLO`.
 
-- **AVRCP nativo**: l'autoradio ha A2DP sink e AVRCP controller (multi-player disattivo, volume assoluto no). Il servizio
-  `A2dpMediaBrowserService` risulta registrato; i metadati andranno verificati con il telefono che suona. Su questo
-  stack, fragile, può dare dati incompleti.
-- **Canale RFCOMM proprietario** (più controllabile, serve l'app sul telefono): `MEDIA_STATE` (CBOR `{state, title, artist,
-  album, durationMs, positionMs, ts, app, coverId}`, posizione ogni 1 s solo in `playing`), `MEDIA_CMD {cmd: play|pause|next|prev|seek, positionMs?}`,
-  `COVER_REQ {coverId}` → `COVER {coverId, jpeg}` (JPEG ≤ 128×128, qualità ~70: la memoria heap delle app è limitata a 144 MB).
-- Sul telefono l'app sorgente si legge con `MediaSessionManager` + `NotificationListenerService` (permesso concesso dall'utente).
-
-La posizione **non** viaggia più dal telefono: l'autoradio ha un GPS integrato valido (fix con velocità e direzione).
+- `MEDIA_STATE` (telefono → radio, CBOR): `{state: playing|paused|stopped, title, artist, album, durationMs, positionMs, ts, app, coverId}`.
+  Inviato a ogni cambiamento e circa ogni secondo mentre suona. La radio **estrapola** la posizione dall'istante in
+  cui riceve il messaggio, con il proprio orologio: i due orologi non devono coincidere.
+- `COVER_REQ {coverId}` (radio → telefono): la radio chiede i byte una sola volta per `coverId`.
+- `COVER {coverId, jpeg}` (telefono → radio): JPEG al massimo 128×128, qualità ~70 (heap della radio ~144 MB).
+- `MEDIA_CMD {cmd, positionMs?}` (radio → telefono): `play | pause | toggle | next | prev | seek`.
+- Il telefono legge le sessioni media di qualunque app con `MediaSessionManager`; Android lo consente solo con un
+  `NotificationListenerService` abilitato dall'utente ("accesso alle notifiche", concesso una volta, solo per leggere il player).
+  Senza, il telefono invia `stopped`. Da Android 11 serve `<queries>` per leggere il nome delle app musicali.
 
 ## 7. Errori e sicurezza
 

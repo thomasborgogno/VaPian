@@ -18,7 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** One end of an in-memory pipe: bytes written on one side are parsed into frames on the other. */
-private class PipeTransport(private val outgoing: Channel<ByteArray>, private val incoming: Channel<ByteArray>) : FrameTransport {
+internal class PipeTransport(private val outgoing: Channel<ByteArray>, private val incoming: Channel<ByteArray>) : FrameTransport {
     private val reader = FrameReader()
     private val pending = ArrayDeque<Frame>()
     val sentTypes = mutableListOf<Int>()
@@ -41,17 +41,17 @@ private class PipeTransport(private val outgoing: Channel<ByteArray>, private va
     }
 }
 
-private fun pipe(): Pair<PipeTransport, PipeTransport> {
+internal fun pipe(): Pair<PipeTransport, PipeTransport> {
     val a = Channel<ByteArray>(Channel.UNLIMITED)
     val b = Channel<ByteArray>(Channel.UNLIMITED)
     return PipeTransport(a, b) to PipeTransport(b, a)
 }
 
-private fun camera(id: String, lat: Double = 45.0, lng: Double = 9.0) = SpeedCamera(
+internal fun camera(id: String, lat: Double = 45.0, lng: Double = 9.0) = SpeedCamera(
     id, lat, lng, 70, 90, CameraStatus.APPROVED, CameraSource.OPENSTREETMAP, GeoHash.encode(lat, lng), updatedAt = 1_700_000_000_000,
 )
 
-private class FakePhoneStore(var regions: List<RegionDataset> = emptyList()) : PhoneStore {
+internal class FakePhoneStore(var regions: List<RegionDataset> = emptyList()) : PhoneStore {
     val reports = mutableMapOf<String, ReportCamera>()
     val ignores = mutableListOf<String>()
     override suspend fun saveReport(report: ReportCamera): Boolean = reports.putIfAbsent(report.id, report) == null
@@ -61,7 +61,7 @@ private class FakePhoneStore(var regions: List<RegionDataset> = emptyList()) : P
     override suspend fun settings() = UserSettings(AlertDistanceMode.DYNAMIC, 450, false)
 }
 
-private class FakeRadioStore(
+internal class FakeRadioStore(
     var reports: MutableList<ReportCamera> = mutableListOf(),
     var ignores: MutableList<ReportIgnore> = mutableListOf(),
     val have: MutableMap<String, Long> = mutableMapOf(),
@@ -84,7 +84,7 @@ private class FakeRadioStore(
     override suspend fun markDatasetSynced(nowMs: Long) { syncedAt = nowMs }
 }
 
-private fun report(id: String, ts: Long = 1_000_000L) = ReportCamera(id, 45.0, 9.0, 88.0, 90.0, 90, ts, "radio-1")
+internal fun report(id: String, ts: Long = 1_000_000L) = ReportCamera(id, 45.0, 9.0, 88.0, 90.0, 90, ts, "radio-1")
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionsTest {
@@ -94,7 +94,7 @@ class SessionsTest {
         val phoneStore = FakePhoneStore()
         val radioStore = FakeRadioStore(reports = mutableListOf(report("r1")), ignores = mutableListOf(ReportIgnore("osm_9", 5)))
         val done = CompletableDeferred<Unit>()
-        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1") { 1_000_000L }.run() }
+        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1", nowMs = { 1_000_000L }).run() }
         launch { RadioLinkSession(radioT, radioStore, "radio-1", "1.0", { 1_000_000L }, onSyncComplete = { done.complete(Unit) }).run() }
         advanceUntilIdle()
         done.await()
@@ -111,7 +111,7 @@ class SessionsTest {
         val (phoneT, radioT) = pipe()
         val phoneStore = FakePhoneStore()
         val radioStore = FakeRadioStore(reports = mutableListOf(report("r1")))
-        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1") { 1_000_000L }.run() }
+        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1", nowMs = { 1_000_000L }).run() }
         val radio = RadioLinkSession(radioT, radioStore, "radio-1", "1.0", { 1_000_000L })
         launch { radio.run() }
         advanceUntilIdle()
@@ -128,7 +128,7 @@ class SessionsTest {
         val (phoneT, radioT) = pipe()
         val phoneStore = FakePhoneStore()
         val radioStore = FakeRadioStore(reports = mutableListOf(report("r1"), report("r2")))
-        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1") { 1_000_000L }.run() }
+        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1", nowMs = { 1_000_000L }).run() }
         launch { RadioLinkSession(radioT, radioStore, "radio-1", "1.0", { 1_000_000L }).run() }
         advanceUntilIdle()
         assertEquals(setOf("r1"), phoneStore.reports.keys)
@@ -143,7 +143,7 @@ class SessionsTest {
         val badLat = report("bad").copy(lat = 123.0)
         val future = report("future", ts = 1_000_000L + 10 * 60 * 1000)
         val radioStore = FakeRadioStore(reports = mutableListOf(badLat, future))
-        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1") { 1_000_000L }.run() }
+        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1", nowMs = { 1_000_000L }).run() }
         val radio = RadioLinkSession(radioT, radioStore, "radio-1", "1.0", { 1_000_000L })
         launch { radio.run() }
         advanceUntilIdle()
@@ -165,7 +165,7 @@ class SessionsTest {
         )
         val radioStore = FakeRadioStore(have = mutableMapOf("Lazio" to 100L, "Veneto" to 250L))
         val done = CompletableDeferred<Unit>()
-        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1") { 1L }.run() }
+        launch { PhoneLinkSession(phoneT, phoneStore, "phone-1", nowMs = { 1L }).run() }
         launch { RadioLinkSession(radioT, radioStore, "radio-1", "1.0", { 42L }, onSyncComplete = { done.complete(Unit) }).run() }
         advanceUntilIdle()
         done.await()
@@ -186,7 +186,7 @@ class SessionsTest {
         val phoneStore = FakePhoneStore(listOf(RegionDataset("Lombardia", 1, listOf(camera("osm_1"))), RegionDataset("Veneto", 1, listOf(camera("osm_2")))))
         val radioStore = FakeRadioStore()
         val done = CompletableDeferred<Unit>()
-        launch { PhoneLinkSession(phoneT, phoneStore, "p") { 1L }.run() }
+        launch { PhoneLinkSession(phoneT, phoneStore, "p", nowMs = { 1L }).run() }
         launch { RadioLinkSession(radioT, radioStore, "r", "1.0", { 1L }, wantedRegions = setOf("Veneto"), onSyncComplete = { done.complete(Unit) }).run() }
         advanceUntilIdle()
         done.await()
@@ -222,7 +222,7 @@ class SessionsTest {
     @Test
     fun oldProtocolIsRefused() = runTest {
         val (phoneT, radioT) = pipe()
-        launch { PhoneLinkSession(phoneT, FakePhoneStore(), "p") { 1L }.run() }
+        launch { PhoneLinkSession(phoneT, FakePhoneStore(), "p", nowMs = { 1L }).run() }
         radioT.send(Messages.encode(MsgType.HELLO, Hello(1, "0.1", "r", "radio", emptyList())))
         advanceUntilIdle()
         val reply = radioT.receive()!!

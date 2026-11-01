@@ -102,6 +102,51 @@ data class SettingsSnapshot(
     val toleranceFilterEnabled: Boolean,
 )
 
+/** Playback state of the phone's active media session, as shown on the dashboard. */
+@Serializable
+data class MediaState(
+    /** playing | paused | stopped */
+    val state: String,
+    val title: String = "",
+    val artist: String = "",
+    val album: String = "",
+    val durationMs: Long = 0,
+    val positionMs: Long = 0,
+    /** Phone clock when [positionMs] was read: the radio extrapolates between updates. */
+    val ts: Long = 0,
+    val app: String = "",
+    /** Identifies the cover art; empty when there is none. The radio asks for the bytes once per id. */
+    val coverId: String = "",
+) {
+    val isPlaying: Boolean get() = state == STATE_PLAYING
+
+    companion object {
+        const val STATE_PLAYING = "playing"
+        const val STATE_PAUSED = "paused"
+        const val STATE_STOPPED = "stopped"
+    }
+}
+
+/** Transport control sent by the radio. [cmd] is one of [MediaCmd.PLAY] ... [MediaCmd.SEEK]. */
+@Serializable
+data class MediaCmd(val cmd: String, val positionMs: Long = 0) {
+    companion object {
+        const val PLAY = "play"
+        const val PAUSE = "pause"
+        const val TOGGLE = "toggle"
+        const val NEXT = "next"
+        const val PREV = "prev"
+        const val SEEK = "seek"
+    }
+}
+
+@Serializable
+data class CoverReq(val coverId: String)
+
+/** Small JPEG (<= 128x128) for [coverId]; kept tiny because the radio app has a ~144 MB heap. */
+@Serializable
+class Cover(val coverId: String, val jpeg: ByteArray)
+
 @OptIn(ExperimentalSerializationApi::class)
 object Messages {
     inline fun <reified T> encode(type: Int, message: T): ByteArray =

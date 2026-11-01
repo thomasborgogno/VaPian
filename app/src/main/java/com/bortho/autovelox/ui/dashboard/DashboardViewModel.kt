@@ -7,7 +7,10 @@ import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.data.SettingsStore
 import com.bortho.autovelox.guidance.GuidanceController
 import com.bortho.autovelox.link.LinkStatus
+import com.bortho.autovelox.link.MediaCmd
 import com.bortho.autovelox.link.RadioLinkClient
+import com.bortho.autovelox.link.RadioMedia
+import com.bortho.autovelox.link.RadioMediaState
 import com.bortho.autovelox.vehicle.VehicleSignals
 import com.bortho.autovelox.vehicle.VehicleState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,7 +21,8 @@ import javax.inject.Inject
 class DashboardViewModel @Inject constructor(
     private val guidance: GuidanceController,
     vehicle: VehicleSignals,
-    radioLink: RadioLinkClient,
+    private val radioLink: RadioLinkClient,
+    radioMedia: RadioMedia,
     private val settings: SettingsStore,
 ) : ViewModel() {
     val guidanceState: StateFlow<GuidanceState> = guidance.state
@@ -26,6 +30,7 @@ class DashboardViewModel @Inject constructor(
     val nearby: StateFlow<List<SpeedCamera>> = guidance.nearby
     val vehicle: StateFlow<VehicleState> = vehicle.state
     val linkStatus: StateFlow<LinkStatus> = radioLink.status
+    val media: StateFlow<RadioMediaState?> = radioMedia.state
 
     val lastDatasetSyncAt: Long get() = settings.lastDatasetSyncAt
     val phoneAddress: String? get() = settings.phoneAddress
@@ -33,6 +38,8 @@ class DashboardViewModel @Inject constructor(
     fun choosePhone(address: String) {
         settings.phoneAddress = address
     }
+
+    suspend fun mediaCommand(cmd: String) = radioLink.sendMediaCommand(MediaCmd(cmd))
 
     suspend fun report(): SpeedCamera? = guidance.reportNow()
     suspend fun undo(camera: SpeedCamera) = guidance.undoReport(camera)
