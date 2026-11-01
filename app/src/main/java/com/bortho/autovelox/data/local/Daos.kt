@@ -73,6 +73,20 @@ abstract class SpeedCameraDao {
     @Query("SELECT COUNT(*) FROM speed_cameras WHERE region = :region AND deleted = 0")
     abstract suspend fun countInRegion(region: String): Int
 
+    @Query("SELECT * FROM speed_cameras WHERE region = :region AND deleted = 0")
+    abstract suspend fun inRegion(region: String): List<SpeedCameraEntity>
+
+    /** Everything users reported that is usable for alerts (approved) — shipped to the radio as a pseudo-region. */
+    @Query("SELECT * FROM speed_cameras WHERE source = 'user' AND status = 'approved' AND deleted = 0")
+    abstract suspend fun approvedUserCameras(): List<SpeedCameraEntity>
+
+    @Query("SELECT MAX(updatedAt) FROM speed_cameras WHERE source = 'user' AND status = 'approved' AND deleted = 0")
+    abstract suspend fun latestApprovedUserUpdate(): Long?
+
+    /** Reports created on this device and not yet confirmed (radio: waiting for the phone's ack). */
+    @Query("SELECT * FROM speed_cameras WHERE source = 'user' AND dirty = 1 AND deleted = 0 AND createdBy = :localKey")
+    abstract suspend fun dirtyOwnReports(localKey: String): List<SpeedCameraEntity>
+
     /**
      * Merge a batch coming from Firestore or a region download without
      * clobbering local unsynced edits: rows that are `dirty` are skipped.
@@ -159,6 +173,9 @@ interface QueuedIgnoreDao {
 
     @Query("UPDATE queued_ignores SET dirty = 0 WHERE uid = :uid AND cameraId = :cameraId")
     suspend fun markClean(uid: String, cameraId: String)
+
+    @Query("SELECT * FROM queued_ignores WHERE uid = :uid AND dirty = 1 AND deleted = 0")
+    suspend fun dirty(uid: String): List<QueuedIgnoreEntity>
 }
 
 @Dao
@@ -177,6 +194,9 @@ interface SyncQueueDao {
 
     @Query("DELETE FROM sync_queue WHERE opType = :opType AND targetId = :targetId")
     suspend fun removeByTarget(opType: String, targetId: String)
+
+    @Query("DELETE FROM sync_queue")
+    suspend fun clear()
 
     @Query("UPDATE sync_queue SET attempts = attempts + 1 WHERE id = :id")
     suspend fun markAttempted(id: Long)

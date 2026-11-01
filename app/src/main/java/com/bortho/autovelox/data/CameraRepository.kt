@@ -107,6 +107,8 @@ class CameraRepository @Inject constructor(
         db.syncQueue().enqueue(SyncOpType.DELETE_CAMERA, id, "{}", clock.nowMillis())
     }
 
+    suspend fun exists(id: String): Boolean = cameras.get(id) != null
+
     // --- blacklist & queued ignores --------------------------------------
 
     fun observeIgnoredIds(uid: String): Flow<Set<String>> = db.ignored().observeIds(uid).map { it.toSet() }

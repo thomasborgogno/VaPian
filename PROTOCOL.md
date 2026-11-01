@@ -78,20 +78,23 @@ u32 crc32     CRC32 di header + payload
 Unità di trasferimento: la **regione**. Una fotografia per regione è più semplice e robusta di un delta, e a queste
 dimensioni basta.
 
-### 5.1 Record camera (binario, 32 byte)
+### 5.1 Record camera (binario, lunghezza variabile, ~32 byte)
+
+L'id è una stringa (gli id OSM sono `osm_<nodo>`, le segnalazioni nuove sono UUID, ma i dati esistenti su Firestore
+hanno anche id da 20 caratteri):
 
 ```
- 0  u8[16] id          UUID (segnalazioni utente) oppure 8 byte a 0 + u64 osmNodeId (id "osm_<n>")
-16  i32    lat_e7      latitudine * 1e7
-20  i32    lng_e7      longitudine * 1e7
-24  u8     limitKmh    0 = sconosciuto
-25  u16    direction   0..359, 0xFFFF = assente
-27  u8     flags       bit0 status(0=pending,1=approved) | bit1 source(0=user,1=openstreetmap)
-                       | bit2 directionReversed | bit3 deleted (tombstone)
-28  u32    updatedAt   epoch secondi
+u8  idLen | id (UTF-8, idLen byte, 1..255)
+i32 lat_e7      latitudine * 1e7
+i32 lng_e7      longitudine * 1e7
+u8  limitKmh    0 = sconosciuto
+u16 direction   0..359, 0xFFFF = assente
+u8  flags       bit0 approved | bit1 openstreetmap | bit2 directionReversed
+u32 updatedAt   epoch secondi
 ```
 
-Il geohash non viaggia: l'autoradio lo ricalcola. Includi le `approved` e le `pending` proprie; non le `pending` altrui.
+Un id `osm_12345678901` dà un record di 32 byte. Il geohash non viaggia: il ricevente lo ricalcola.
+Si includono le `approved`; le `pending` altrui non servono (non generano avvisi).
 
 ### 5.2 Flusso
 
@@ -104,7 +107,8 @@ Il geohash non viaggia: l'autoradio lo ricalcola. Includi le `approved` e le `pe
 5. L'autoradio verifica il CRC32 totale, scrive in `dataset_staging` e **in un'unica transazione** sostituisce le righe
    pulite della regione e aggiorna `dataset_meta`. Se il link cade o il CRC non torna: scarta e ripete da capo la regione.
 6. Poi `BLACKLIST_SNAPSHOT {cameraIds[]}` e `SETTINGS_SNAPSHOT {alertDistanceMode, alertDistanceMeters, toleranceFilterEnabled}`.
-7. `lastDatasetReceivedAt` si aggiorna solo a trasferimento riuscito (alimenta il promemoria a 14 giorni).
+7. `lastDatasetReceivedAt` si aggiorna solo a sync completo (alimenta il promemoria a 14 giorni). Se una regione arriva corrotta (lunghezza o CRC32 sbagliati), viene scartata, i dati precedenti restano e il sync non risulta completo.
+8. Le segnalazioni dei **singoli utenti** viaggiano come pseudo-regione `_segnalazioni` (tutte le `approved` non OSM).
 
 Le righe locali dell'autoradio con `dirty=1` (segnalazioni non ancora confermate) **non** vengono toccate dallo swap.
 

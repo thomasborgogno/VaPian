@@ -109,16 +109,24 @@ Primario: `MediaController`/`MediaBrowser` sulla sessione AVRCP; comandi con `Tr
 
 `applicationId com.bortho.autovelox`, progetto Firebase `bortho-autovelox`, stesso `google-services.json`, `MAPS_API_KEY` da `local.properties` via `manifestPlaceholders`, stesso keystore e SHA-1, `googleServerClientId` come in `auth_config.dart`. OSM punta alla **produzione**: nessun changeset di test. Nessun segreto nel repo; `release.yml` da portare con gli stessi secret (build Gradle invece di `flutter build`).
 
-## 11. Fasi
+## 11. Fasi e stato
 
-1. **Fondamenta**: Gradle (Compose, Hilt, Room), Firebase, CI. ✅ fatto (build verde).
-2. **Core**: `core/` puro con test JVM (geo, prossimità, tolleranza, distanza preavviso, `directionReversed`), repository, sync Firestore, Overpass per regione, auth. (core, Room, Overpass, SyncEngine ✅; auth Google e worker WorkManager da fare)
-3. **UI telefono**: mappa, segnalazione con direzione, impostazioni, navigazione, OSM OAuth/changeset.
-4. **Android Auto**: porting di `carapp/` sul nuovo core.
-5. **Dashboard**: rilevamento ruolo, radar, volume, pulsante Segnala (senza Bluetooth, dati di prova).
-6. **Link Bluetooth RFCOMM**: `PROTOCOL.md` implementato — prima handshake e segnalazione, poi dataset, poi media. Test su head unit reale.
-7. **Player**: AVRCP e/o canale RFCOMM.
-8. **Hardening**: avvio a freddo in modalità aereo, batteria, promemoria 14 giorni, test emulatore API 29 landscape 1280×720.
+1. **Fondamenta** ✅ Gradle, Compose, Hilt, Room, Firebase; build, test e lint verdi.
+2. **Core** ✅ `core/` puro con test JVM (geo, prossimità, `GuidanceEngine`, radar, ruolo), Room + repository,
+   Overpass per regione (provato contro il server reale), `SyncEngine` Firestore, `UserSession` (ospite locale),
+   `SyncWorker` (WorkManager). ⬜ Login Google e collegamento dall'ospite.
+3. **Servizio di guida** ✅ `GuidanceController` + `GuidanceService` (GPS, voce italiana, audio focus, segnala/annulla/ignora).
+   Le direzioni GPS da fermo sono rumore: il motore tiene l'ultima direzione affidabile.
+4. **Link Bluetooth** ✅ Framing + CRC, messaggi CBOR, dataset per regione, sessioni telefono/autoradio con test in memoria
+   (outbox con ack, idempotenza, rate limit, dataset corrotto scartato); trasporto RFCOMM con riconnessione e watchdog.
+   ⬜ Prova su due dispositivi reali.
+5. **Dashboard** ✅ Radar in Canvas, velocità, limite, avviso, segnala con annulla a 5 s, ignora, barra del volume, banner a 14 giorni,
+   scelta del telefono. ⬜ Player (AVRCP o canale RFCOMM).
+6. **Segnali dell'auto** ✅ `VehicleSignals` (porte, marcia, velocità dal CAN) in sola lettura. ⬜ Significato dei codici da test in auto.
+7. **UI telefono** ⬜ Per ora: avvisi on/off, download regioni da OSM, stato del link. Mancano mappa Google, segnalazione con
+   direzione, impostazioni, navigazione, OSM OAuth/changeset.
+8. **Android Auto** ⬜.
+9. **Hardening** ⬜ Test strumentati su Room e sync, avvio a freddo in modalità aereo, batteria, emulatore API 26 landscape 1280×720.
 
 ## 12. Vincoli della head unit target e cosa resta da verificare
 
