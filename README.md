@@ -1,87 +1,63 @@
 # VaPian!
 
-App Android nativa (Kotlin + Jetpack Compose) che avvisa degli **autovelox** in tempo reale, con dati OpenStreetMap
-e segnalazioni degli utenti. Un solo APK, due ruoli:
+A native Android app (Kotlin + Jetpack Compose) that warns you about **speed cameras** in real time, using
+OpenStreetMap data and community reports. One APK, two roles:
 
-| | **Telefono** | **Autoradio / tablet in auto (Dashboard)** |
+| | **Phone** | **Head unit / in-car tablet (Dashboard)** |
 |---|---|---|
-| Rete | online (OSM/Overpass, Firebase, Google Maps) | **sempre offline** |
-| Cosa fa | mappa, modifica e segnalazione autovelox, impostazioni, scarica i dati per regione, player multimediale | radar, velocità e limite, avvisi, pulsante "Segnala", player, volume |
-| Dati | scarica da OSM e sincronizza con Firestore | li riceve dal telefono via **Bluetooth Classic (RFCOMM)** |
+| Network | online (OSM/Overpass, Firebase, Google Maps) | **always offline** |
+| What it does | map, edit and report cameras, settings, per-region data download, media player | radar, speed and limit, alerts, "Report" button, media player, volume |
+| Data | downloads from OSM and syncs with Firestore | receives it from the phone over **Bluetooth Classic (RFCOMM)** |
 
-Il ruolo si sceglie da solo: schermo largo in orizzontale (≥ 840 dp) o modalità auto → Dashboard, altrimenti Telefono.
-L'autoradio non ha rete: ogni 14 giorni un banner ricorda di aggiornare i dati dal telefono, che è l'unico nodo
-connesso a internet. Le segnalazioni fatte dall'autoradio passano dal telefono prima di arrivare a Firestore.
+The role is picked automatically: a wide landscape screen (≥ 840 dp) or car mode → Dashboard, otherwise Phone.
+The head unit has no internet connection: a banner reminds you every 14 days to refresh the data from the phone,
+which is the only node that is online. Reports made on the head unit go through the phone before reaching Firestore.
 
-Requisiti: Android 8.0+ (`minSdk 26`), Bluetooth Classic per il collegamento telefono ↔ autoradio.
+Requirements: Android 8.0+ (`minSdk 26`) and Bluetooth Classic for the phone ↔ head unit link.
 
-Documentazione: [ARCHITECTURE.md](ARCHITECTURE.md) (moduli e decisioni) · [PROTOCOL.md](PROTOCOL.md) (protocollo del link Bluetooth).
+## Features
 
-## Provare una release (MVP)
+- Real-time speed camera alerts with distance, speed and limit
+- Phone ↔ head unit link over Bluetooth Classic, with per-region datasets
+- Media player on the head unit (cover art, progress with seek) controlling the phone's playback
+- Map with camera markers, filters, and interactive editing and reporting
+- Dashboard with a Canvas radar view, volume control and a one-tap "Report" button
+- Read-only vehicle signals from the head unit (doors, gear, speed) when available
+- Built-in diagnostics screen to inspect GPS and vehicle signals
 
-1. Dalla pagina **Releases** del repository scarica `VaPian-vX.Y.Z.apk` (e controlla l'hash con il file `.sha256`).
-2. Installa lo **stesso APK** sul telefono e sull'autoradio (abilita "origini sconosciute"; sull'autoradio anche con `adb install`).
-3. **Associa il telefono all'autoradio** dalle impostazioni Bluetooth dell'autoradio.
-4. Sul **telefono**: concedi posizione, notifiche e Bluetooth; in *Impostazioni → Dati autovelox* scarica la regione
-   che ti serve; in *Autoradio* lascia attivo "Sempre pronto in background" e, per il player, concedi l'accesso alle notifiche.
-5. Sull'**autoradio**: scorri la dashboard da destra a sinistra → *Impostazioni → Scegli telefono*. Quando il link è attivo
-   sparisce l'icona "telefono scollegato" e arrivano dati e player.
-6. In auto: la *Diagnostica* (nelle impostazioni della Dashboard) raccoglie GPS e segnali del veicolo per capire cosa
-   espone l'autoradio.
+## Getting started
 
-## Compilare
+1. Install the **same APK** on the phone and on the head unit (enable "unknown sources"; on the head unit you can
+   also use `adb install`).
+2. **Pair the phone with the head unit** in the head unit's Bluetooth settings.
+3. On the **phone**: grant location, notification and Bluetooth permissions; in *Settings → Speed camera data*
+   download the regions you need; in *Head unit* keep "Always ready in background" on and, for the media player,
+   grant notification access.
+4. On the **head unit**: swipe the dashboard from right to left → *Settings → Choose phone*. When the link is up,
+   the "phone disconnected" icon disappears and data and player start flowing.
 
-Serve JDK 17+ e Android SDK (compileSdk 37). Tre file locali, **mai nel repository**:
+## Building
 
-- `local.properties`: `sdk.dir=...` e `MAPS_API_KEY=<chiave Google Maps>`
-- `app/google-services.json`: configurazione Firebase del progetto
-- `keystore.properties` (solo per la release firmata): `storeFile`, `storePassword`, `keyAlias`, `keyPassword`
+Requires JDK 17+ and the Android SDK (compileSdk 37). Two local files are needed and are **never committed**:
 
-```bash
-./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug      # verifica completa
-./gradlew :app:assembleRelease -PvapianVersion=1.0.0                    # APK release firmato
-```
-
-La versione dell'APK viene da `-PvapianVersion` (`1.2.3` → `versionCode 10203`); senza, è `0.0.0-dev`.
-Se manca il keystore l'APK release esce **non firmato** (non installabile): è voluto, mai firmato in debug di nascosto.
-
-La build debug include un ricevitore `DebugFixReceiver` per simulare fix GPS via `adb`; non esiste nella release.
-
-## Pubblicare una release
-
-La pipeline [`release.yml`](.github/workflows/release.yml) parte da un tag:
+- `local.properties`: `sdk.dir=...` and `MAPS_API_KEY=<your Google Maps API key>`
+- `app/google-services.json`: your own Firebase project configuration
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
-Esegue i test unitari, costruisce l'APK firmato con la versione del tag, ne verifica firma e versione e crea la
-GitHub Release con l'APK e l'hash SHA-256 (note generate dai commit). Un tag con suffisso (`v1.0.0-rc1`) diventa pre-release.
-[`ci.yml`](.github/workflows/ci.yml) esegue test, build debug e lint a ogni push su `master` e su ogni pull request.
+The debug build includes a `DebugFixReceiver` to simulate GPS fixes via `adb`; it is not present in release builds.
 
-### Segreti da configurare (Settings → Secrets and variables → Actions)
+## Documentation
 
-| Segreto | Contenuto |
-|---|---|
-| `GOOGLE_SERVICES_JSON` | `base64 -w0 app/google-services.json` |
-| `MAPS_API_KEY` | chiave Google Maps |
-| `KEYSTORE_BASE64` | `base64 -w0 vapian-release.p12` |
-| `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | credenziali del keystore |
+- [ARCHITECTURE.md](ARCHITECTURE.md) — modules and design decisions
+- [PROTOCOL.md](PROTOCOL.md) — Bluetooth link protocol
 
-Genera il keystore una sola volta e **conservalo con cura**: serve la stessa chiave per ogni aggiornamento futuro.
+## Status
 
-```bash
-keytool -genkeypair -keystore vapian-release.p12 -storetype PKCS12 -alias vapian -keyalg RSA -keysize 4096 -validity 10000
-```
+**Implemented:** guidance and alerts, Bluetooth phone ↔ head unit link with per-region datasets, head unit media
+player, map with markers, filters and editing, settings, Dashboard with radar.
 
-> **Attenzione, repository pubblico.** L'APK contiene la chiave Maps (è nel manifest) e viene pubblicato: limita la
-> chiave nella console Google Cloud a *app Android* con package `com.bortho.autovelox` e **SHA-1 del keystore di release**
-> (`keytool -list -v -keystore vapian-release.p12`). Lo stesso SHA-1 va registrato su Firebase se usi l'accesso Google.
-
-## Stato
-
-Implementati: guida e avvisi, link Bluetooth telefono ↔ autoradio con dataset per regione, player sull'autoradio
-(copertina, avanzamento con seek), mappa con marker, filtri e modifica, impostazioni, Dashboard con radar.
-Da fare: login Google e collegamento dall'ospite, modalità navigazione sul telefono, OAuth/changeset OSM,
-Android Auto, scelta delle regioni dall'autoradio. Dettagli in [ARCHITECTURE.md](ARCHITECTURE.md).
+**Planned:** Google sign-in and guest linking, navigation mode on the phone, OSM OAuth/changesets, Android Auto,
+region selection from the head unit.
