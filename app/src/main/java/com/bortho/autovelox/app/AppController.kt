@@ -58,6 +58,11 @@ class AppController @Inject constructor(
         }
     }
 
+    /** Called after the permission dialog: the link service could not start earlier if Bluetooth was not yet allowed. */
+    fun onPermissionsChanged() {
+        if (currentRole == DeviceRole.PHONE && settings.linkEnabled) LinkService.start(context)
+    }
+
     @Synchronized
     fun stop() {
         outboxJob?.cancel()

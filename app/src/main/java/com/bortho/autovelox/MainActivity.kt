@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                 if (granted[Manifest.permission.ACCESS_FINE_LOCATION] == true && role == DeviceRole.DASHBOARD) {
                     GuidanceService.start(context)
                 }
+                appController.onPermissionsChanged()
             }
 
             LaunchedEffect(role) {

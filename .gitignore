@@ -24,3 +24,8 @@ vapian-vehicle-*.txt
 vapian-can-*.txt
 vapian-log-*.txt
 *.apk
+
+# Release signing: never committed
+keystore.properties
+*.jks
+*.keystore

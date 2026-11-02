@@ -73,9 +73,18 @@ class LinkService : Service() {
         private const val CHANNEL_ID = "radio_link"
         private const val NOTIFICATION_ID = 2
 
-        fun start(context: Context) {
+        /**
+         * A connectedDevice foreground service needs BLUETOOTH_CONNECT already granted (Android 14+ throws and kills
+         * the app otherwise, which is what a fresh install hits before the user answers the permission dialog).
+         * Returns false when it could not start; the caller retries once the permission is granted.
+         */
+        fun start(context: Context): Boolean {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) return false
             val intent = Intent(context, LinkService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
+            return true
         }
 
         fun stop(context: Context) {

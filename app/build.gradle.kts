@@ -14,6 +14,19 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 
+// Release version: CI passes the tag (-PvapianVersion=1.2.3 for v1.2.3). versionCode is derived from it so it always
+// grows with the semantic version: 1.2.3 -> 10203.
+val appVersionName = (findProperty("vapianVersion") as String?)?.removePrefix("v") ?: "0.0.0-dev"
+val appVersionCode = appVersionName.substringBefore('-').split('.').mapNotNull { it.toIntOrNull() }
+    .let { (it.getOrElse(0) { 0 } * 10_000 + it.getOrElse(1) { 0 } * 100 + it.getOrElse(2) { 0 }).coerceAtLeast(1) }
+
+// Release signing: from keystore.properties (gitignored, local) or from environment variables (CI secrets).
+val keystoreProps = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun signingValue(key: String, env: String): String? = keystoreProps.getProperty(key) ?: System.getenv(env)
+
 android {
     namespace = "com.bortho.autovelox"
     compileSdk {
@@ -24,8 +37,8 @@ android {
         applicationId = "com.bortho.autovelox"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -39,8 +52,23 @@ android {
         aidl = true
     }
 
+    signingConfigs {
+        create("release") {
+            val storePath = signingValue("storeFile", "VAPIAN_KEYSTORE_FILE")
+            if (storePath != null) {
+                storeFile = rootProject.file(storePath)
+                storePassword = signingValue("storePassword", "VAPIAN_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "VAPIAN_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "VAPIAN_KEY_PASSWORD")
+                storeType = signingValue("storeType", "VAPIAN_KEYSTORE_TYPE") ?: "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Unsigned (and so not installable) when no keystore is configured: better than silently debug-signing.
+            if (signingConfigs.getByName("release").storeFile != null) signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
