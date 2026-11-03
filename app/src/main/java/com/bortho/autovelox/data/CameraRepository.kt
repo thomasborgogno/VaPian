@@ -92,6 +92,12 @@ class CameraRepository @Inject constructor(
     }
 
     /** Insert or edit a camera locally (dirty) and queue its replication. */
+    /** Records that this camera now exists as an OpenStreetMap node (replicated like any other edit). */
+    suspend fun markPublishedToOsm(id: String, nodeId: Long) {
+        val current = camera(id) ?: return
+        saveUserCamera(current.copy(osmNodeId = nodeId, osmNodeVersion = 1))
+    }
+
     suspend fun saveUserCamera(camera: SpeedCamera) {
         val stamped = camera.copy(updatedAt = clock.nowMillis())
         cameras.upsert(stamped.toEntity(dirty = true))

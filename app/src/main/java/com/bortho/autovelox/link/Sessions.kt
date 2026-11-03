@@ -192,8 +192,6 @@ class RadioLinkSession(
     private val deviceId: String,
     private val appVersion: String,
     private val nowMs: () -> Long,
-    /** Regions the user wants on the radio; null = every region the phone offers. */
-    private val wantedRegions: Set<String>? = null,
     private val onSyncComplete: () -> Unit = {},
     private val mediaListener: MediaListener? = null,
 ) {
@@ -302,7 +300,6 @@ class RadioLinkSession(
         val have = store.haveVersions()
         queue.clear()
         manifest.regions
-            .filter { wantedRegions == null || it.name in wantedRegions }
             .filter { have[it.name] != it.version }
             .forEach(queue::addLast)
         manifestReceived = true

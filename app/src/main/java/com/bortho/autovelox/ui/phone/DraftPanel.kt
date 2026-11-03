@@ -47,6 +47,7 @@ internal fun DraftPanel(
     onSave: () -> Unit,
     onDelete: (() -> Unit)?,
     onApprove: (() -> Unit)?,
+    onPublishOsm: (() -> Unit)?,
     onIgnore: (() -> Unit)?,
     onRestore: (() -> Unit)?,
     modifier: Modifier = Modifier,
@@ -117,6 +118,9 @@ internal fun DraftPanel(
                     Text("  Ignora questo velox")
                 }
             }
+        }
+        onPublishOsm?.let {
+            OutlinedButton(onClick = it, Modifier.fillMaxWidth()) { Text("Pubblica su OpenStreetMap") }
         }
         onApprove?.let {
             Button(onClick = it, Modifier.fillMaxWidth()) {

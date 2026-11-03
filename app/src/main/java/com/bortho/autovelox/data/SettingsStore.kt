@@ -52,10 +52,6 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getLong(KEY_LAST_OSM, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_OSM, value).apply()
 
-    /** Regions the user wants on the radio (empty = all the phone has). */
-    var wantedRegions: Set<String>
-        get() = prefs.getStringSet(KEY_WANTED, emptySet()) ?: emptySet()
-        set(value) = prefs.edit().putStringSet(KEY_WANTED, value).apply()
 
     /** Phone: keep the radio link server running in the background (default on). */
     var linkEnabled: Boolean
@@ -67,14 +63,25 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getString(KEY_PHONE, null)
         set(value) = prefs.edit().putString(KEY_PHONE, value).apply()
 
+    /** Phone navigation mode: which of the views was used last (name of `NavigationVariant`). */
+    var navigationView: String?
+        get() = prefs.getString(KEY_NAV_VIEW, null)
+        set(value) = prefs.edit().putString(KEY_NAV_VIEW, value).apply()
+
+    /** The map's "long press to add a camera" hint has been dismissed (or used): never shown again. */
+    var addHintSeen: Boolean
+        get() = prefs.getBoolean(KEY_ADD_HINT, false)
+        set(value) = prefs.edit().putBoolean(KEY_ADD_HINT, value).apply()
+
     private companion object {
+        const val KEY_ADD_HINT = "add_hint_seen"
+        const val KEY_NAV_VIEW = "navigation_view"
         const val KEY_MODE = "alert_mode"
         const val KEY_METERS = "alert_meters"
         const val KEY_TOLERANCE = "alert_tolerance"
         const val KEY_ROLE = "role_override"
         const val KEY_LAST_SYNC = "last_dataset_sync"
         const val KEY_LAST_OSM = "last_osm_download"
-        const val KEY_WANTED = "wanted_regions"
         const val KEY_PHONE = "phone_address"
         const val KEY_LINK = "link_enabled"
     }

@@ -57,7 +57,8 @@ The debug build includes a `DebugFixReceiver` to simulate GPS fixes via `adb`; i
 ## Status
 
 **Implemented:** guidance and alerts, Bluetooth phone ↔ head unit link with per-region datasets, head unit media
-player, map with markers, filters and editing, settings, Dashboard with radar.
+player, map with markers, filters and editing, settings, Dashboard with radar, Google sign-in (links the guest),
+full-screen navigation mode on the phone, OpenStreetMap account (OAuth + changesets: publish a camera, delete one
+this app published).
 
-**Planned:** Google sign-in and guest linking, navigation mode on the phone, OSM OAuth/changesets, Android Auto,
-region selection from the head unit.
+**Planned:** editing the limit/direction of an existing OSM node, Firestore sync tests.

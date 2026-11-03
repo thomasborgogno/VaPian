@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -41,9 +43,11 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var appController: AppController
     @Inject lateinit var settings: SettingsStore
+    @Inject lateinit var osmAccount: com.bortho.autovelox.osm.OsmAccount
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleOsmRedirect(intent)
         setContent {
             val config = LocalConfiguration.current
             val role = remember(config) {
@@ -102,6 +106,27 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOsmRedirect(intent)
+    }
+
+    /** Back from the OpenStreetMap authorization page: finish the login and say how it went. */
+    private fun handleOsmRedirect(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (!osmAccount.isRedirect(uri)) return
+        intent.data = null // consumed: a rotation must not replay the one-time code
+        lifecycleScope.launch {
+            val error = osmAccount.handleRedirect(uri)
+            android.widget.Toast.makeText(
+                this@MainActivity,
+                error ?: "Account OpenStreetMap collegato.",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
         }
     }
 

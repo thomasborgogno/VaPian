@@ -33,7 +33,16 @@ class MapViewModel @Inject constructor(
     private val repository: CameraRepository,
     private val session: UserSession,
     private val sync: SyncEngine,
+    private val osmAccount: com.bortho.autovelox.osm.OsmAccount,
+    private val settings: com.bortho.autovelox.data.SettingsStore,
+    private val osmEdit: com.bortho.autovelox.osm.OsmEditService,
 ) : ViewModel() {
+    val osmLinked: StateFlow<Boolean> = osmAccount.linked
+
+    var addHintSeen: Boolean
+        get() = settings.addHintSeen
+        set(value) { settings.addHintSeen = value }
+
     private val viewport = MutableStateFlow<Viewport?>(null)
     val filter = MutableStateFlow(CameraFilter())
 
@@ -78,6 +87,27 @@ class MapViewModel @Inject constructor(
 
     fun add(lat: Double, lng: Double, limit: Int?, direction: Int?) =
         mutate { repository.addApprovedUserCamera(lat, lng, limit, direction, session.localKey) }
+
+    /** Publishes an own, approved camera as an OpenStreetMap node. Returns an error text, or null on success. */
+    suspend fun publishToOsm(camera: SpeedCamera): String? = try {
+        val nodeId = osmEdit.publish(camera)
+        repository.markPublishedToOsm(camera.id, nodeId)
+        runCatching { sync.drain() }
+        null
+    } catch (e: Exception) {
+        "Pubblicazione OSM non riuscita: ${e.message}"
+    }
+
+    /** Removes the OpenStreetMap node of a camera this app published. Returns an error text, or null on success. */
+    suspend fun deleteFromOsm(camera: SpeedCamera): String? {
+        val nodeId = camera.osmNodeId ?: return null
+        return try {
+            osmEdit.delete(nodeId, camera.lat, camera.lng, camera.osmNodeVersion ?: 1)
+            null
+        } catch (e: Exception) {
+            "Eliminazione da OpenStreetMap non riuscita: ${e.message}"
+        }
+    }
 
     /** True if [camera] was created on this install (the only ones that may be edited or deleted). */
     fun isOwn(camera: SpeedCamera): Boolean = camera.createdBy == session.localKey

@@ -2,7 +2,7 @@ package com.bortho.autovelox.core.role
 
 /** Which behavior the single APK runs with. See ARCHITECTURE.md §1. */
 enum class DeviceRole {
-    /** Online node: Firebase, Overpass, Google Maps, Android Auto, owner of the dataset. */
+    /** Online node: Firebase, Overpass, Google Maps, owner of the dataset. */
     PHONE,
 
     /** Offline in-car display: radar, player, volume, report button; data comes from the phone. */

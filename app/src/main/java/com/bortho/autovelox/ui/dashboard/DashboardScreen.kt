@@ -114,7 +114,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                                 RadarView(fix, guidance, nearby)
                                 guidance.camera?.let { AlertCard(it, guidance.distanceMeters, guidance.overLimit, Modifier.align(Alignment.TopCenter)) }
                             }
-                            ActionRow(viewModel, activeCamera = guidance.camera)
+                            ActionRow(viewModel::report, viewModel::undo, viewModel::commitReport, viewModel::ignoreActive, activeCamera = guidance.camera)
                         }
                         PlayerCard(
                             media = media,
@@ -220,7 +220,7 @@ private fun DashboardSettings(link: LinkStatus, paired: Boolean, lastSyncAt: Lon
 }
 
 @Composable
-private fun SpeedLimitSign(limit: Int) {
+internal fun SpeedLimitSign(limit: Int) {
     Box(
         Modifier.size(72.dp).clip(CircleShape).background(Color.White).padding(6.dp).clip(CircleShape).background(VaPianColors.Danger).padding(6.dp)
             .clip(CircleShape).background(Color.White),
@@ -253,7 +253,7 @@ private fun Chip(text: String, background: Color) {
 }
 
 @Composable
-private fun AlertCard(camera: SpeedCamera, distance: Double?, overLimit: Boolean, modifier: Modifier) {
+internal fun AlertCard(camera: SpeedCamera, distance: Double?, overLimit: Boolean, modifier: Modifier) {
     val color = if (overLimit) VaPianColors.Danger else VaPianColors.Warning
     Row(
         modifier.clip(RoundedCornerShape(16.dp)).background(color).padding(horizontal = 24.dp, vertical = 12.dp),
@@ -267,7 +267,13 @@ private fun AlertCard(camera: SpeedCamera, distance: Double?, overLimit: Boolean
 }
 
 @Composable
-private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?) {
+internal fun ActionRow(
+    report: suspend () -> SpeedCamera?,
+    undo: suspend (SpeedCamera) -> Unit,
+    commit: () -> Unit,
+    ignoreActive: suspend () -> Unit,
+    activeCamera: SpeedCamera?,
+) {
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     var pending by remember { mutableStateOf<SpeedCamera?>(null) }
@@ -285,7 +291,7 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     scope.launch {
-                        val camera = viewModel.report()
+                        val camera = report()
                         if (camera == null) {
                             // A silent failure on this button would be the worst outcome: say why nothing happened.
                             notice = "Nessuna posizione GPS: riprova tra qualche secondo"
@@ -301,7 +307,7 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
                             if (pending != camera) return@launch // undone
                         }
                         pending = null
-                        viewModel.commitReport()
+                        commit()
                     }
                 },
                 modifier = Modifier.height(96.dp).width(420.dp),
@@ -313,7 +319,7 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
                 onClick = {
                     val toUndo = pending
                     pending = null
-                    if (toUndo != null) scope.launch { viewModel.undo(toUndo) }
+                    if (toUndo != null) scope.launch { undo(toUndo) }
                 },
                 modifier = Modifier.height(96.dp).width(420.dp),
                 shape = RoundedCornerShape(20.dp),
@@ -322,7 +328,7 @@ private fun ActionRow(viewModel: DashboardViewModel, activeCamera: SpeedCamera?)
         }
         if (activeCamera?.source == CameraSource.OPENSTREETMAP) {
             Button(
-                onClick = { scope.launch { viewModel.ignoreActive() } },
+                onClick = { scope.launch { ignoreActive() } },
                 modifier = Modifier.height(96.dp).width(220.dp),
                 shape = RoundedCornerShape(20.dp),
             ) { Text("IGNORA", fontSize = 24.sp, fontWeight = FontWeight.Bold) }

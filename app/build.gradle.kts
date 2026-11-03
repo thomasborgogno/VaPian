@@ -43,6 +43,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Never committed: lives in the gitignored local.properties (or the CI secret).
+        // OpenStreetMap endpoints: production unless local.properties says otherwise (the OSM sandbox, to test edits).
+        fun osm(key: String, default: String) = "\"" + localProperties.getProperty(key, default) + "\""
+        buildConfigField("String", "OSM_BASE_URL", osm("OSM_BASE_URL", "https://www.openstreetmap.org"))
+        buildConfigField("String", "OSM_API_URL", osm("OSM_API_URL", "https://api.openstreetmap.org"))
+        buildConfigField("String", "OSM_CLIENT_ID", osm("OSM_CLIENT_ID", "WsglTNqzI33CX2s3qkUBR8hZsHsWepuP-stXnZXhufk"))
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
     }
 
@@ -119,6 +124,9 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play)
+    implementation(libs.googleid)
     implementation(libs.firebase.firestore)
 
     implementation(libs.play.services.maps)

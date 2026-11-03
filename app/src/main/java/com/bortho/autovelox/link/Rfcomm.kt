@@ -244,14 +244,12 @@ class RadioLinkClient @Inject constructor(
         log.note("connected to the phone")
         _status.value = LinkStatus.CONNECTED
         val transport = RfcommTransport(socket)
-        val wanted = settings.wantedRegions.takeIf { it.isNotEmpty() }
         val link = RadioLinkSession(
             transport = transport,
             store = store,
             deviceId = session.deviceId,
             appVersion = "1.0",
             nowMs = { System.currentTimeMillis() },
-            wantedRegions = wanted,
             onSyncComplete = { _status.value = LinkStatus.SYNCED },
             mediaListener = radioMedia,
         )

@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.ui.platform.LocalContext
+import com.bortho.autovelox.auth.AccountState
 import com.bortho.autovelox.core.model.AlertDistanceMode
 import com.bortho.autovelox.core.model.ItalianRegions
 import com.bortho.autovelox.core.model.UserSettings
@@ -74,10 +76,17 @@ fun SettingsScreen(
     val linkEnabled by phoneViewModel.linkEnabled.collectAsState()
     val mediaAccess by phoneViewModel.mediaAccess.collectAsState()
     var othersExpanded by rememberSaveable { mutableStateOf(false) }
+    val account by settingsViewModel.account.collectAsState()
+    val accountBusy by settingsViewModel.accountBusy.collectAsState()
+    val accountMessage by settingsViewModel.accountMessage.collectAsState()
+    val activityContext = LocalContext.current
+    val osmLinked by settingsViewModel.osmLinked.collectAsState()
+    val osmUsername by settingsViewModel.osmUsername.collectAsState()
 
     // back from the system settings screen: re-read the notification-access permission
     LifecycleResumeEffect(Unit) {
         phoneViewModel.refreshMediaAccess()
+        settingsViewModel.osmRefreshName() // the display name is fetched once after linking; retried here if it failed
         onPauseOrDispose { }
     }
 
@@ -87,6 +96,53 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { Text("Impostazioni", style = MaterialTheme.typography.headlineMedium) }
+
+        // ---- account ---------------------------------------------------------------------------------------------
+        item { SectionTitle("Account") }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when (val a = account) {
+                        is AccountState.Google -> {
+                            Text(a.name ?: "Account Google", style = MaterialTheme.typography.titleMedium)
+                            a.email?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                            OutlinedButton(onClick = { settingsViewModel.signOut(activityContext) }, enabled = !accountBusy) { Text("Esci") }
+                        }
+                        else -> {
+                            Text("Ospite", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Le tue segnalazioni sono legate a questo telefono. Accedendo con Google restano tue anche se cambi telefono.",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Button(onClick = { settingsViewModel.signInWithGoogle(activityContext) }, enabled = !accountBusy) { Text("Accedi con Google") }
+                        }
+                    }
+                    accountMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("OpenStreetMap", style = MaterialTheme.typography.titleMedium)
+                    if (osmLinked) {
+                        Text(
+                            osmUsername?.let { "Collegato come $it." } ?: "Account collegato.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OutlinedButton(onClick = { settingsViewModel.osmSignOut() }) { Text("Scollega") }
+                    } else {
+                        Text(
+                            "Collega il tuo account OpenStreetMap per pubblicare i nuovi autovelox sulla mappa pubblica. " +
+                                "Le modifiche sono visibili a tutti, quindi ogni pubblicazione chiede conferma.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Button(onClick = { settingsViewModel.osmSignIn() }) { Text("Collega OpenStreetMap") }
+                    }
+                }
+            }
+        }
 
         // ---- alerts -------------------------------------------------------------------------------------------
         item { SectionTitle("Avvisi") }

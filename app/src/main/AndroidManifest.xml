@@ -45,10 +45,18 @@
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden"
+            android:launchMode="singleTop"
             android:screenOrientation="unspecified">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- OpenStreetMap OAuth redirect: com.bortho.autovelox://oauth2redirect?code=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.bortho.autovelox" android:host="oauth2redirect" />
             </intent-filter>
         </activity>
         <service
@@ -73,14 +81,9 @@
 
         <activity
             android:name=".diagnostics.DiagnosticsActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="VaPian Diagnostica"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

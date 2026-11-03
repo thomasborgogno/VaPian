@@ -37,7 +37,7 @@ Dimensioni: un record compatto pesa 32 byte (PROTOCOL §5.1). Anche 10.000 punti
 
 ## 3. Stack
 
-Kotlin, Jetpack Compose (Material 3), Hilt, Room, Coroutines/Flow, WorkManager (solo telefono), `maps-compose` (solo telefono), Firebase Auth + Firestore (solo telefono), `androidx.car.app` (Android Auto, solo telefono), Media3 `MediaController` (autoradio), Bluetooth Classic RFCOMM (`BluetoothServerSocket` sul telefono, `BluetoothSocket` sull'autoradio): il BLE non è disponibile sull'autoradio.
+Kotlin, Jetpack Compose (Material 3), Hilt, Room, Coroutines/Flow, WorkManager (solo telefono), `maps-compose` (solo telefono), Firebase Auth + Firestore (solo telefono), Media3 `MediaController` (autoradio), Bluetooth Classic RFCOMM (`BluetoothServerSocket` sul telefono, `BluetoothSocket` sull'autoradio): il BLE non è disponibile sull'autoradio.
 
 `minSdk 26` (l'autoradio è SDK 27), `targetSdk/compileSdk 37`. Niente librerie native: l'autoradio è solo armeabi-v7a (32 bit, Cortex-A7). Il ruolo si sceglie a runtime, non con flavor, così resta una APK sola; il codice rete/Firebase vive in un modulo/package caricato solo dal ruolo telefono.
 
@@ -52,7 +52,6 @@ vehicle/     VehicleSignals: lettura dei segnali CAN (autoradio), vedi §7.1
 guidance/    CameraProximityService (foreground), TTS, audio focus
 ui/phone/    mappa, segnalazione, navigazione, impostazioni
 ui/dashboard/radar, player, volume, pulsante Segnala, banner aggiornamento
-car/         Android Auto (CarAppService, schermate)                          [solo telefono]
 ```
 
 `core/` e `guidance/` sono **condivisi** dai due ruoli: l'autoradio fa gli stessi avvisi di prossimità/TTS leggendo Room, esattamente come oggi il servizio nativo.
@@ -133,10 +132,14 @@ Primario: `MediaController`/`MediaBrowser` sulla sessione AVRCP; comandi con `Tr
    piatta), pallini sotto zoom 10. Bozza trascinabile: si sposta il marker e si ruota la **maniglia viola** a 70 dp; pannello con
    limiti, "senso di marcia contrario", elimina, approva, ignora/ripristina. Elenco delle segnalazioni da confermare. In alto a destra: pulsante **Filtri** (come in Flutter: limiti di velocità, "senza limite noto", "solo ignorati" in grigio, "Cancella filtro", segnalino quando attivo) accanto a quello della posizione, la bussola sotto; tutti ridisegnati con i colori del tema (quelli nativi di Google Maps sono sempre chiari). Il filtro è stato di sessione, non salvato.
    **Impostazioni**: avvisi (attivazione, preavviso fisso/dinamico, tolleranza), autoradio (collegamento, pronto in background, accesso al player) e dati autovelox per regione (download da OSM): quelle già scaricate in cima, tutte le altre in un accordion. Colori: **Material You** dal telefono su Android 12+, altrimenti un teal (la Dashboard è sempre scura, fondo nero).
-   Il radar della Dashboard usa gli stessi badge e colori. ⬜ Login Google e collegamento dall'ospite, filtro per limite,
-   navigazione con camera che segue l'utente, OSM OAuth/changeset (OSM di produzione).
-8. **Android Auto** ⬜.
-9. **Hardening** ⬜ Test strumentati su Room e sync, avvio a freddo in modalità aereo, batteria, emulatore API 26 landscape 1280×720.
+   Il radar della Dashboard usa gli stessi badge e colori.
+   **Account** ✅ ospite (anonimo Firebase, silenzioso) o **Google** via Credential Manager: l'accesso *collega* la credenziale all'ospite, quindi uid e
+   segnalazioni restano (se l'account Google era già usato altrove si passa a quello). **Guida** ✅ terza scheda, a tutto schermo e con lo schermo sempre acceso: tre viste
+   (velocità + radar, mappa scura, mappa) con scheda di avviso e Segnala/Ignora; gli avvisi vocali vengono dallo stesso `GuidanceController` che gira anche a schermo spento.
+   **OpenStreetMap** ✅ account proprio (OAuth 2 + PKCE, client pubblico, token cifrato con chiave Keystore; `osm/`): pubblica un proprio autovelox approvato come nodo
+   `highway=speed_camera` e, se già pubblicato, lo elimina anche da OSM; ogni scrittura chiede conferma. Gli endpoint sono in `BuildConfig` e si possono puntare alla
+   sandbox OSM da `local.properties` (`OSM_BASE_URL`, `OSM_API_URL`, `OSM_CLIENT_ID`). ⬜ Modifica di limite/direzione di un nodo OSM esistente.
+9. **Hardening** 🟨 Test strumentati su Room/repository ✅ (6, `src/androidTest`, lanciati a mano con `am instrument` per non disinstallare l'app). ⬜ Test del sync Firestore, avvio a freddo in modalità aereo, batteria, emulatore API 26 landscape 1280×720.
 
 ## 12. Vincoli della head unit target e cosa resta da verificare
 

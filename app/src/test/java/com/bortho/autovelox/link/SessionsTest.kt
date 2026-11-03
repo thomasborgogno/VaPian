@@ -181,20 +181,6 @@ class SessionsTest {
     }
 
     @Test
-    fun userRegionFilterLimitsWhatIsFetched() = runTest {
-        val (phoneT, radioT) = pipe()
-        val phoneStore = FakePhoneStore(listOf(RegionDataset("Lombardia", 1, listOf(camera("osm_1"))), RegionDataset("Veneto", 1, listOf(camera("osm_2")))))
-        val radioStore = FakeRadioStore()
-        val done = CompletableDeferred<Unit>()
-        launch { PhoneLinkSession(phoneT, phoneStore, "p", nowMs = { 1L }).run() }
-        launch { RadioLinkSession(radioT, radioStore, "r", "1.0", { 1L }, wantedRegions = setOf("Veneto"), onSyncComplete = { done.complete(Unit) }).run() }
-        advanceUntilIdle()
-        done.await()
-        assertEquals(setOf("Veneto"), radioStore.applied.keys)
-        phoneT.close(); radioT.close()
-    }
-
-    @Test
     fun corruptDatasetIsDiscardedAndSyncIsNotMarkedComplete() = runTest {
         val (phoneT, radioT) = pipe()
         val radioStore = FakeRadioStore(have = mutableMapOf("Lombardia" to 1L))

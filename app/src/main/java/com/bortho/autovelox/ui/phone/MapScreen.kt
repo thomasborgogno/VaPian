@@ -42,7 +42,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import android.widget.Toast
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -123,6 +125,10 @@ fun MapScreen(
     var draft by remember { mutableStateOf<Draft?>(null) }
     var showPending by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
+    val osmLinked by viewModel.osmLinked.collectAsState()
+    var showAddHint by remember { mutableStateOf(!viewModel.addHintSeen) }
+    // what the user is being asked to confirm before something is written to the public OpenStreetMap
+    var osmConfirm by remember { mutableStateOf<OsmAction?>(null) }
 
     LaunchedEffect(draft != null) { onEditingChange(draft != null) }
 
@@ -178,7 +184,13 @@ fun MapScreen(
             // the native "my location" button and compass are always light: they are redrawn below with the app theme
             uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false, compassEnabled = false, mapToolbarEnabled = false),
             onMapLoaded = { loaded = true },
-            onMapLongClick = { point -> if (draft == null) startDraft(point, null) },
+            onMapLongClick = { point ->
+                if (draft == null) {
+                    startDraft(point, null)
+                    showAddHint = false
+                    viewModel.addHintSeen = true
+                }
+            },
         ) {
             for (item in cameras) {
                 // the camera being edited is represented by the overlay, not by its normal markers
@@ -235,6 +247,20 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (tooFar) Card { Text("Avvicina la mappa per vedere gli autovelox", Modifier.padding(12.dp)) }
+                if (showAddHint && !tooFar) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                        Column(Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
+                            Text("Per aggiungere un autovelox tieni premuto sulla mappa.")
+                            TextButton(
+                                onClick = {
+                                    showAddHint = false
+                                    viewModel.addHintSeen = true
+                                },
+                                Modifier.align(Alignment.End),
+                            ) { Text("Ho capito") }
+                        }
+                    }
+                }
                 if (pending.isNotEmpty()) {
                     Card(
                         Modifier.clickable { showPending = true },
@@ -270,7 +296,19 @@ fun MapScreen(
                         draft = null
                     },
                     onDelete = if (existing != null && viewModel.isOwn(existing)) {
-                        { viewModel.delete(existing.id); draft = null }
+                        {
+                            if (existing.osmNodeId != null && osmLinked) {
+                                osmConfirm = OsmAction.DeleteNode(existing)
+                            } else {
+                                viewModel.delete(existing.id)
+                                draft = null
+                            }
+                        }
+                    } else null,
+                    onPublishOsm = if (existing != null && osmLinked && !d.readOnly && existing.source == CameraSource.USER &&
+                        existing.status == CameraStatus.APPROVED && existing.osmNodeId == null
+                    ) {
+                        { osmConfirm = OsmAction.Publish(existing) }
                     } else null,
                     onApprove = if (existing != null && !d.readOnly && existing.status == CameraStatus.PENDING) {
                         {
@@ -288,6 +326,45 @@ fun MapScreen(
                 )
             }
         }
+    }
+
+    osmConfirm?.let { action ->
+        AlertDialog(
+            onDismissRequest = { osmConfirm = null },
+            title = { Text(if (action is OsmAction.Publish) "Pubblica su OpenStreetMap" else "Elimina da OpenStreetMap") },
+            text = {
+                Text(
+                    "Stai per modificare la mappa pubblica di OpenStreetMap, consultata da molte persone. " +
+                        if (action is OsmAction.Publish) {
+                            "Controlla che posizione, limite e direzione siano corretti prima di confermare."
+                        } else {
+                            "Il nodo pubblicato verrà rimosso anche da lì."
+                        },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    osmConfirm = null
+                    scope.launch {
+                        val error = when (action) {
+                            is OsmAction.Publish -> viewModel.publishToOsm(action.camera)
+                            is OsmAction.DeleteNode -> viewModel.deleteFromOsm(action.camera)
+                        }
+                        Toast.makeText(
+                            context,
+                            error ?: if (action is OsmAction.Publish) "Autovelox pubblicato su OpenStreetMap." else "Rimosso da OpenStreetMap.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        // a failed OSM delete keeps the camera, so the node and the local copy never drift apart
+                        if (error == null) {
+                            if (action is OsmAction.DeleteNode) viewModel.delete(action.camera.id)
+                            draft = null
+                        }
+                    }
+                }) { Text("Conferma") }
+            },
+            dismissButton = { TextButton(onClick = { osmConfirm = null }) { Text("Annulla") } },
+        )
     }
 
     details?.let { camera ->
@@ -320,6 +397,12 @@ fun MapScreen(
             )
         }
     }
+}
+
+/** What the user has to confirm before something is written to the public OpenStreetMap. */
+private sealed interface OsmAction {
+    data class Publish(val camera: SpeedCamera) : OsmAction
+    data class DeleteNode(val camera: SpeedCamera) : OsmAction
 }
 
 /** A round map control (my location, compass) in the app's surface colours, so it follows the phone's light/dark theme. */
@@ -375,7 +458,7 @@ private fun CompassNeedle(bearing: Float) {
  */
 @Composable
 @GoogleMapComposable
-private fun CameraMarkers(item: MapCamera, showDots: Boolean, density: Float, onTap: () -> Unit) {
+internal fun CameraMarkers(item: MapCamera, showDots: Boolean, density: Float, onTap: () -> Unit) {
     val camera = item.camera
     val color = CameraColors.of(camera, ignored = item.ignored)
     val position = LatLng(camera.lat, camera.lng)
