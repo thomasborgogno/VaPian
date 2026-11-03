@@ -183,7 +183,7 @@ data class MediaCmd(val cmd: String, val positionMs: Long = 0, val pkg: String =
 @Serializable
 data class CoverReq(val coverId: String)
 
-/** Small JPEG (<= 128x128) for [coverId]; kept tiny because the radio app has a ~144 MB heap. */
+/** JPEG (<= 300x300, about 15-35 KB) for [coverId]; the radio decodes one at a time, so its ~144 MB heap is not a problem. */
 @Serializable
 class Cover(val coverId: String, val jpeg: ByteArray)
 

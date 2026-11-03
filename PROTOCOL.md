@@ -127,7 +127,7 @@ nelle `caps` dell'`HELLO`.
   Inviato a ogni cambiamento e circa ogni secondo mentre suona. La radio **estrapola** la posizione dall'istante in
   cui riceve il messaggio, con il proprio orologio: i due orologi non devono coincidere.
 - `COVER_REQ {coverId}` (radio → telefono): la radio chiede i byte una sola volta per `coverId`.
-- `COVER {coverId, jpeg}` (telefono → radio): JPEG al massimo 128×128, qualità ~70 (heap della radio ~144 MB).
+- `COVER {coverId, jpeg}` (telefono → radio): JPEG al massimo 300×300, qualità ~85 (circa 15-35 KB; la radio ne decodifica una alla volta, quindi l'heap di ~144 MB non è un problema). Prima era 128×128 e risultava pixelata su schermi grandi.
 - `MEDIA_CMD {cmd, positionMs?}` (radio → telefono): `play | pause | toggle | next | prev | seek`. `seek` porta il brano a `positionMs` (la barra di avanzamento della Dashboard è un cursore); l'app musicale deve supportare il salto.
 - Il telefono legge le sessioni media di qualunque app con `MediaSessionManager`; Android lo consente solo con un
   `NotificationListenerService` abilitato dall'utente ("accesso alle notifiche", concesso una volta, solo per leggere il player).

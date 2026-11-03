@@ -91,6 +91,11 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
     private fun readMediaApps(): List<String> =
         prefs.getString(KEY_MEDIA_APPS, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_MEDIA_APPS
 
+    /** Dashboard: the music card uses the blurred cover as its background (a demo toggle in the left rail). */
+    var coverBackground: Boolean
+        get() = prefs.getBoolean(KEY_COVER_BG, true)
+        set(value) = prefs.edit().putBoolean(KEY_COVER_BG, value).apply()
+
     /** Phone navigation mode: which of the views was used last (name of `NavigationVariant`). */
     var navigationView: String?
         get() = prefs.getString(KEY_NAV_VIEW, null)
@@ -108,6 +113,7 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_DUCK = "duck_percent"
         const val KEY_BRIGHTNESS = "dashboard_brightness"
         const val KEY_MEDIA_APPS = "media_apps"
+        const val KEY_COVER_BG = "cover_background"
         const val KEY_ADD_HINT = "add_hint_seen"
         const val KEY_NAV_VIEW = "navigation_view"
         const val KEY_MODE = "alert_mode"

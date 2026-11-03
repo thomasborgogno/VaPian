@@ -58,6 +58,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
     val scope = rememberCoroutineScope()
     val flow = rememberReportFlow(viewModel::report, viewModel::undo, viewModel::commitReport)
     val phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED
+    val coverBackground by viewModel.coverBackground.collectAsState()
 
     // 0 = calm, 1 = a camera is approaching; held a little after the camera passes so the layout does not flicker
     val alert = rememberHeld(guidance.camera != null, holdMs = 1_800)
@@ -85,7 +86,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
                 cameras = nearby,
                 flow = flow,
                 onIgnore = { scope.launch { viewModel.ignoreActive() } },
-                modifier = Modifier.weight(lerp(1f, 2.6f, layoutProgress)).fillMaxHeight(),
+                modifier = Modifier.weight(lerp(1f, 2.2f, layoutProgress)).fillMaxHeight(),
             )
             MediaCard(
                 media = media,
@@ -95,6 +96,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
                 apps = mediaApps,
                 onLaunch = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.LAUNCH, pkg = pkg) } },
                 onSelect = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.SELECT, pkg = pkg) } },
+                coverBackground = coverBackground,
                 onBackgroundTap = { radarChosen = true },
                 modifier = Modifier.weight(lerp(2f, 1f, layoutProgress)).fillMaxHeight(),
             )
@@ -129,7 +131,7 @@ private fun LeftRail(onOpenSettings: () -> Unit) {
     }
     Column(Modifier.width(60.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
         if (assistant != null) {
-            RailButton(Icons.Outlined.Mic, "Assistente") { runCatching { context.startActivity(assistant) } }
+            RailButton(Icons.Outlined.Mic, "Assistente", onClick = { runCatching { context.startActivity(assistant) } })
         }
         RailButton(Icons.Outlined.Settings, "Impostazioni", onOpenSettings)
     }

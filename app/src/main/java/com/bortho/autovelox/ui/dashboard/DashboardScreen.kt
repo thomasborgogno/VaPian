@@ -97,6 +97,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
     val alertSettings by viewModel.alertSettings.collectAsState()
     val regions by viewModel.regions.collectAsState()
     var duck by remember { mutableIntStateOf(viewModel.duckPercent) }
+    val coverBackground by viewModel.coverBackground.collectAsState()
     val scope = rememberCoroutineScope()
 
     // The "data age" is read at composition and refreshed when the link finishes a sync.
@@ -124,6 +125,8 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                         onSettings = viewModel::saveAlertSettings,
                         duckPercent = duck,
                         onDuck = { duck = it; viewModel.duckPercent = it },
+                        coverBackground = coverBackground,
+                        onCoverBackground = viewModel::setCoverBackground,
                         onPair = { showPairing = true },
                         onDiagnostics = onOpenDiagnostics,
                     )

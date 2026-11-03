@@ -211,9 +211,10 @@ class PhoneMediaSource @Inject constructor(
     }
 
     private fun encode(source: Bitmap): ByteArray {
+        // never enlarge: a small source stays as it is; a big one is brought down to COVER_SIZE
         val scale = COVER_SIZE.toFloat() / maxOf(source.width, source.height)
         val scaled = if (scale < 1f) Bitmap.createScaledBitmap(source, (source.width * scale).toInt().coerceAtLeast(1), (source.height * scale).toInt().coerceAtLeast(1), true) else source
-        return ByteArrayOutputStream().also { scaled.compress(CompressFormat.JPEG, 70, it) }.toByteArray()
+        return ByteArrayOutputStream().also { scaled.compress(CompressFormat.JPEG, COVER_QUALITY, it) }.toByteArray()
     }
 
     override suspend fun cover(coverId: String): ByteArray? = covers[coverId]
@@ -281,7 +282,9 @@ class PhoneMediaSource @Inject constructor(
         const val START_ATTEMPTS = 12
         const val START_POLL_MS = 500L
         const val TAG = "PhoneMediaSource"
-        const val COVER_SIZE = 128
-        const val MAX_CACHED_COVERS = 8
+        // 300 px at quality 85 is about 15-35 KB: the cover is drawn at roughly 200 dp, so this is sharp and cheap over RFCOMM
+        const val COVER_SIZE = 300
+        const val COVER_QUALITY = 85
+        const val MAX_CACHED_COVERS = 6
     }
 }

@@ -1,6 +1,13 @@
 package com.bortho.autovelox.ui.dashboard
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -81,6 +88,8 @@ fun MediaCard(
     apps: MediaApps? = null,
     onLaunch: (String) -> Unit = {},
     onSelect: (String) -> Unit = {},
+    /** Use the blurred cover as the card's background. */
+    coverBackground: Boolean = true,
     /** A tap on the card outside its buttons, bar and app switcher. */
     onBackgroundTap: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -95,7 +104,7 @@ fun MediaCard(
         if (track == null || track.state == "stopped" && track.title.isBlank()) {
             NothingPlaying(phoneConnected, apps, onLaunch)
         } else {
-            Playing(media, phoneConnected, onCommand, onSeek, apps, onLaunch, onSelect)
+            Playing(media, phoneConnected, onCommand, onSeek, apps, onLaunch, onSelect, coverBackground)
         }
     }
 }
@@ -132,6 +141,7 @@ private fun Playing(
     apps: MediaApps?,
     onLaunch: (String) -> Unit,
     onSelect: (String) -> Unit,
+    coverBackground: Boolean,
 ) {
     val track = media.media
 
@@ -171,6 +181,8 @@ private fun Playing(
     val cover = remember(media.cover) { media.cover?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        BlurredCover(media.cover, coverBackground)
+
         val w = maxWidth.value
         val h = maxHeight.value
         // 0 = fully wide, 1 = fully narrow
@@ -190,7 +202,7 @@ private fun Playing(
         // cover
         Box(Modifier.place(r.cover).clip(RoundedCornerShape(lerp(30.dp, 24.dp, t)))) {
             if (cover != null) {
-                Image(cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Image(cover, contentDescription = null, contentScale = ContentScale.Crop, filterQuality = FilterQuality.High, modifier = Modifier.fillMaxSize())
             } else {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
                     Text("♪", fontSize = 64.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
@@ -267,6 +279,38 @@ private fun Playing(
             Box(Modifier.place(rect).clip(CircleShape).clickable { onCommand(cmd) }, contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = label, modifier = Modifier.size(lerp(40.dp, 30.dp, t)), tint = MaterialTheme.colorScheme.onSurface)
             }
+        }
+    }
+}
+
+/**
+ * The cover as the card's background, blurred and dimmed: the artwork is shrunk to a few pixels and stretched back with
+ * smooth filtering, which looks like a heavy blur on every Android version (the real blur needs Android 12), is very
+ * cheap, and a scrim keeps the text readable. It fades in and out when toggled and cross-fades between tracks.
+ */
+@Composable
+private fun BlurredCover(jpeg: ByteArray?, enabled: Boolean) {
+    val blurred = remember(jpeg) {
+        jpeg?.let { bytes ->
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { source ->
+                var bitmap = source
+                // halve step by step down to ~16 px: a single big jump would alias instead of averaging
+                while (maxOf(bitmap.width, bitmap.height) > 16) {
+                    bitmap = Bitmap.createScaledBitmap(bitmap, maxOf(bitmap.width / 2, 1), maxOf(bitmap.height / 2, 1), true)
+                }
+                bitmap.asImageBitmap()
+            }
+        }
+    }
+    val show by animateFloatAsState(if (enabled && blurred != null) 1f else 0f, tween(600), label = "coverBackground")
+    if (show > 0.001f) {
+        Box(Modifier.fillMaxSize().alpha(show)) {
+            Crossfade(blurred, animationSpec = tween(700), label = "coverBackgroundTrack") { image ->
+                if (image != null) {
+                    Image(image, contentDescription = null, contentScale = ContentScale.Crop, filterQuality = FilterQuality.Low, modifier = Modifier.fillMaxSize().alpha(0.6f))
+                }
+            }
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
         }
     }
 }

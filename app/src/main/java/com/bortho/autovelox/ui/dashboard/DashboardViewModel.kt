@@ -60,6 +60,16 @@ class DashboardViewModel @Inject constructor(
         get() = settings.duckPercent
         set(value) { settings.duckPercent = value }
 
+    private val _coverBackground = kotlinx.coroutines.flow.MutableStateFlow(settings.coverBackground)
+
+    /** The music card uses the blurred cover as its background (an option in the dashboard settings). */
+    val coverBackground: StateFlow<Boolean> = _coverBackground
+
+    fun setCoverBackground(value: Boolean) {
+        settings.coverBackground = value
+        _coverBackground.value = value
+    }
+
     var brightness: Float
         get() = settings.dashboardBrightness
         set(value) { settings.dashboardBrightness = value }

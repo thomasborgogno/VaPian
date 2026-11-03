@@ -61,6 +61,8 @@ internal fun DashboardSettings(
     onSettings: (UserSettings) -> Unit,
     duckPercent: Int,
     onDuck: (Int) -> Unit,
+    coverBackground: Boolean,
+    onCoverBackground: (Boolean) -> Unit,
     onPair: () -> Unit,
     onDiagnostics: () -> Unit,
 ) {
@@ -178,6 +180,14 @@ internal fun DashboardSettings(
                     Slider(value = duckPercent.toFloat(), onValueChange = { onDuck((it / 10).roundToInt() * 10) }, valueRange = 0f..100f, steps = 9)
                 }
                 Text("La musica non si ferma: viene solo abbassata", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sfondo con la cover", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("La copertina sfocata dietro la card della musica", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    }
+                    Switch(checked = coverBackground, onCheckedChange = onCoverBackground)
+                }
             }
         }
     }
