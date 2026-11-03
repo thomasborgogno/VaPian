@@ -155,6 +155,7 @@ fun PlayerCard(
             Text(
                 listOf(track.artist, track.album).filter { it.isNotBlank() }.joinToString(" · "),
                 fontSize = 20.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -187,8 +188,8 @@ fun PlayerCard(
                     },
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(clock(shown), fontSize = 16.sp)
-                    Text(clock(track.durationMs), fontSize = 16.sp)
+                    Text(clock(shown), fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(clock(track.durationMs), fontSize = 16.sp, fontWeight = FontWeight.Medium)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -244,7 +245,7 @@ private fun AppSwitcher(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             AppIcon(current?.icon, Modifier.size(32.dp))
-            Text(label, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Text(label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (others.isNotEmpty()) Icon(Icons.Filled.ArrowDropDown, contentDescription = "Cambia app")
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

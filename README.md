@@ -62,3 +62,7 @@ full-screen navigation mode on the phone, OpenStreetMap account (OAuth + changes
 this app published).
 
 **Planned:** editing the limit/direction of an existing OSM node, Firestore sync tests.
+
+## Licenses
+
+The UI font is [Nunito](https://fonts.google.com/specimen/Nunito) (SIL Open Font License 1.1, see [`licenses/Nunito-OFL.txt`](licenses/Nunito-OFL.txt)), bundled in `app/src/main/res/font`.

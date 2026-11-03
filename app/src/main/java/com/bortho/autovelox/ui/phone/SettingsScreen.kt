@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -100,7 +101,7 @@ fun SettingsScreen(
         contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp + bottomClearance),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { Text("Impostazioni", style = MaterialTheme.typography.headlineMedium) }
+        item { Text("Impostazioni", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold) }
 
         // ---- account ---------------------------------------------------------------------------------------------
         item { SectionTitle("Account") }
@@ -109,12 +110,12 @@ fun SettingsScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     when (val a = account) {
                         is AccountState.Google -> {
-                            Text(a.name ?: "Account Google", style = MaterialTheme.typography.titleMedium)
+                            Text(a.name ?: "Account Google", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             a.email?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                             OutlinedButton(onClick = { settingsViewModel.signOut(activityContext) }, enabled = !accountBusy) { Text("Esci") }
                         }
                         else -> {
-                            Text("Ospite", style = MaterialTheme.typography.titleMedium)
+                            Text("Ospite", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
                                 "Le tue segnalazioni sono legate a questo telefono. Accedendo con Google restano tue anche se cambi telefono.",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -130,7 +131,7 @@ fun SettingsScreen(
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("OpenStreetMap", style = MaterialTheme.typography.titleMedium)
+                    Text("OpenStreetMap", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     if (osmLinked) {
                         Text(
                             osmUsername?.let { "Collegato come $it." } ?: "Account collegato.",
@@ -160,7 +161,7 @@ fun SettingsScreen(
                         checked = running,
                         onCheckedChange = onGuidanceToggle,
                     )
-                    Text("Distanza di preavviso", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    Text("Distanza di preavviso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     ModeOption(
                         selected = settings.alertDistanceMode == AlertDistanceMode.FIXED,
                         title = "Fissa",
@@ -202,7 +203,7 @@ fun SettingsScreen(
                             LinkStatus.WAITING -> "In attesa dell'autoradio"
                             else -> "Bluetooth non attivo"
                         },
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                     )
                     Text("L'autoradio riceve da qui le regioni scaricate, le impostazioni e la musica.", style = MaterialTheme.typography.bodySmall)
                     SwitchRow(
@@ -233,7 +234,7 @@ fun SettingsScreen(
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("App da proporre sull'autoradio", style = MaterialTheme.typography.titleMedium)
+                    Text("App da proporre sull'autoradio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
                         "Quando non c'è musica in riproduzione, l'autoradio mostra questi pulsanti per avviarla sul telefono.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -255,7 +256,7 @@ fun SettingsScreen(
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Musica durante gli avvisi", style = MaterialTheme.typography.titleMedium)
+                    Text("Musica durante gli avvisi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
                         "La musica non si ferma: viene solo abbassata del $duck% mentre l'avviso è parlato.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -325,7 +326,7 @@ fun SettingsScreen(
 private fun RegionRow(region: String, meta: com.bortho.autovelox.data.local.DatasetMetaEntity?, downloading: Boolean, onDownload: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
-            Text(region, style = MaterialTheme.typography.titleMedium)
+            Text(region, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 meta?.let { "${it.count} autovelox · ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it.version * 1000))}" }
                     ?: "Non scaricata",
@@ -346,7 +347,7 @@ private fun AccordionHeader(title: String, count: Int, expanded: Boolean, onTogg
     val turn by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
     Card(Modifier.fillMaxWidth().clickable(onClick = onToggle), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("$title ($count)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("$title ($count)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Icon(Icons.Filled.ExpandMore, contentDescription = if (expanded) "Comprimi" else "Espandi", modifier = Modifier.rotate(turn))
         }
     }
@@ -354,14 +355,14 @@ private fun AccordionHeader(title: String, count: Int, expanded: Boolean, onTogg
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
 }
 
 @Composable
 private fun SwitchRow(title: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(description, style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
@@ -376,7 +377,7 @@ private fun ModeOption(selected: Boolean, title: String, description: String, on
     ) {
         RadioButton(selected = selected, onClick = null)
         Column(Modifier.padding(start = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(description, style = MaterialTheme.typography.bodySmall)
         }
     }

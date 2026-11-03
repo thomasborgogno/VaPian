@@ -6,7 +6,7 @@ import android.content.ContextWrapper
 import android.provider.Settings
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.LaunchedEffect
@@ -38,7 +38,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.PhonelinkOff
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -449,17 +450,16 @@ private fun VolumeBar(modifier: Modifier) {
         onDispose { context.unregisterReceiver(receiver) }
     }
 
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Volume", Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onBackground)
-        ThinSlider(
-            value = if (max > 0) volume.toFloat() / max else 0f,
-            onValueChange = {
-                volume = (it * max).roundToInt()
-                audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
-            },
-            modifier = Modifier.weight(1f),
-        )
-    }
+    GlyphBar(
+        icon = Icons.AutoMirrored.Outlined.VolumeUp,
+        contentDescription = "Volume",
+        value = if (max > 0) volume.toFloat() / max else 0f,
+        onValueChange = {
+            volume = (it * max).roundToInt()
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
+        },
+        modifier = modifier,
+    )
 }
 
 /** Screen brightness of this app's window (no system permission needed); remembered between runs. */
@@ -479,18 +479,17 @@ private fun BrightnessBar(viewModel: DashboardViewModel, modifier: Modifier) {
         if (chosen) window?.let { w -> w.attributes = w.attributes.also { it.screenBrightness = brightness.coerceIn(MIN_BRIGHTNESS, 1f) } }
     }
 
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(Icons.Filled.BrightnessMedium, contentDescription = "Luminosità", Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onBackground)
-        ThinSlider(
-            value = brightness,
-            onValueChange = {
-                brightness = it.coerceIn(MIN_BRIGHTNESS, 1f)
-                viewModel.brightness = brightness
-                chosen = true
-            },
-            modifier = Modifier.weight(1f),
-        )
-    }
+    GlyphBar(
+        icon = Icons.Outlined.LightMode,
+        contentDescription = "Luminosità",
+        value = brightness,
+        onValueChange = {
+            brightness = it.coerceIn(MIN_BRIGHTNESS, 1f)
+            viewModel.brightness = brightness
+            chosen = true
+        },
+        modifier = modifier,
+    )
 }
 
 private fun Context.findActivity(): Activity? {

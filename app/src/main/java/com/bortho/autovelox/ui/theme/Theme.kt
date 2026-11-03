@@ -103,5 +103,5 @@ fun VaPianTheme(forceDark: Boolean = false, content: @Composable () -> Unit) {
         else -> TealLight
     }
     val scheme = if (forceDark) base.copy(background = Color.Black) else base
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = AppTypography, content = content)
 }
