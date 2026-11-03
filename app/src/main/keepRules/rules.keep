@@ -10,3 +10,18 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# Release only: drop verbose/debug logging (the interesting state changes use Log.i/w/e and stay).
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}
+# Strip the null-check intrinsics Kotlin adds on every call: smaller and faster, behaviour unchanged for valid code.
+-assumenosideeffects class kotlin.jvm.internal.Intrinsics {
+    public static void checkNotNull(java.lang.Object, java.lang.String);
+    public static void checkNotNullParameter(java.lang.Object, java.lang.String);
+    public static void checkNotNullExpressionValue(java.lang.Object, java.lang.String);
+    public static void checkReturnedValueIsNotNull(java.lang.Object, java.lang.String);
+    public static void checkFieldIsNotNull(java.lang.Object, java.lang.String);
+    public static void checkParameterIsNotNull(java.lang.Object, java.lang.String);
+}

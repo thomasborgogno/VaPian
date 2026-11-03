@@ -7,6 +7,7 @@
 /captures
 .externalNativeBuild
 .cxx
+.claude
 local.properties
 
 # Firebase client config: not committed (public repo), recreate from secret on CI

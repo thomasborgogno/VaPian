@@ -74,11 +74,30 @@ android {
         release {
             // Unsigned (and so not installable) when no keystore is configured: better than silently debug-signing.
             if (signingConfigs.getByName("release").storeFile != null) signingConfig = signingConfigs.getByName("release")
+            // R8 full mode on everything (code shrinking + obfuscation + optimisation + resource shrinking)
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
+            isDebuggable = false
+            ndk.debugSymbolLevel = "NONE"
         }
+    }
+    // the app is Italian-only: drop the translations bundled by every library
+    androidResources {
+        localeFilters += listOf("it")
+    }
+
+    // no signing-block dependency metadata, and none of the licence/metadata files libraries drag in
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+    packaging {
+        resources.excludes += setOf(
+            "META-INF/*.version", "META-INF/*.kotlin_module", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES",
+            "META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/INDEX.LIST", "DebugProbesKt.bin", "kotlin-tooling-metadata.json",
+            "**/*.kotlin_builtins", "**/*.kotlin_metadata",
+        )
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

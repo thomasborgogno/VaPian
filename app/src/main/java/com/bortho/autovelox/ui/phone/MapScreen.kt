@@ -38,6 +38,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -51,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,6 +64,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -123,6 +126,9 @@ fun MapScreen(
     var loaded by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<SpeedCamera?>(null) }
     var draft by remember { mutableStateOf<Draft?>(null) }
+    // height of the editor sheet: the map is padded by it so the edited point sits centred in the visible top part
+    var sheetHeightPx by remember { mutableIntStateOf(0) }
+    var draftStart by remember { mutableIntStateOf(0) }
     var showPending by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     val osmLinked by viewModel.osmLinked.collectAsState()
@@ -131,6 +137,12 @@ fun MapScreen(
     var osmConfirm by remember { mutableStateOf<OsmAction?>(null) }
 
     LaunchedEffect(draft != null) { onEditingChange(draft != null) }
+
+    // centre the point in the area above the sheet, once the sheet has been measured
+    LaunchedEffect(draftStart, sheetHeightPx > 0) {
+        val d = draft ?: return@LaunchedEffect
+        if (sheetHeightPx > 0) cameraState.animate(CameraUpdateFactory.newLatLng(d.position))
+    }
 
     fun startDraft(position: LatLng, existing: SpeedCamera?) {
         val own = existing == null || viewModel.isOwn(existing)
@@ -143,7 +155,7 @@ fun MapScreen(
             readOnly = !own,
             directionSet = existing == null || existing.direction != null,
         )
-        if (existing != null) scope.launch { cameraState.animate(CameraUpdateFactory.newLatLng(position)) }
+        draftStart++
     }
 
     // same routing as the Flutter app: own cameras and anything with a direction open the draft editor;
@@ -178,7 +190,7 @@ fun MapScreen(
             cameraPositionState = cameraState,
             contentPadding = PaddingValues(
                 top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
-                bottom = if (draft == null) bottomClearance else 0.dp,
+                bottom = if (draft == null) bottomClearance else with(LocalDensity.current) { sheetHeightPx.toDp() },
             ),
             properties = MapProperties(isMyLocationEnabled = hasLocation),
             // the native "my location" button and compass are always light: they are redrawn below with the app theme
@@ -279,7 +291,16 @@ fun MapScreen(
             val existing = d.existing
             val ignored = existing != null && cameras.firstOrNull { it.camera.id == existing.id }?.ignored == true
             val isOsm = existing?.source == CameraSource.OPENSTREETMAP
-            Card(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp).navigationBarsPadding()) {
+            // a non-modal bottom sheet: the map must stay draggable while the point is being edited
+            Surface(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { sheetHeightPx = it.height },
+                shape = BottomSheetDefaults.ExpandedShape,
+                color = BottomSheetDefaults.ContainerColor,
+                tonalElevation = BottomSheetDefaults.Elevation,
+                shadowElevation = 8.dp,
+            ) {
+              Column(Modifier.navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+                BottomSheetDefaults.DragHandle()
                 DraftPanel(
                     draft = d,
                     ignored = ignored,
@@ -324,6 +345,7 @@ fun MapScreen(
                         { viewModel.unignore(existing.id); draft = null }
                     } else null,
                 )
+              }
             }
         }
     }
