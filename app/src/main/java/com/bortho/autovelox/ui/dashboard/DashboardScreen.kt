@@ -93,13 +93,7 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel = hiltViewModel()) {
-    val guidance by viewModel.guidanceState.collectAsState()
-    val fix by viewModel.fix.collectAsState()
-    val nearby by viewModel.nearby.collectAsState()
-    val vehicle by viewModel.vehicle.collectAsState()
     val link by viewModel.linkStatus.collectAsState()
-    val media by viewModel.media.collectAsState()
-    val mediaApps by viewModel.mediaApps.collectAsState()
     val alertSettings by viewModel.alertSettings.collectAsState()
     val regions by viewModel.regions.collectAsState()
     var duck by remember { mutableIntStateOf(viewModel.duckPercent) }
@@ -118,32 +112,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
         Box(Modifier.weight(1f).fillMaxWidth()) {
             HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
                 if (page == 0) {
-                    Row(Modifier.fillMaxSize()) {
-                        Column(Modifier.weight(2f).fillMaxHeight().padding(16.dp)) {
-                            TopStrip(
-                                speed = guidance.speedKmh,
-                                limit = guidance.camera?.limit,
-                                overLimit = guidance.overLimit,
-                                vehicle = vehicle,
-                                phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
-                            )
-                            Box(Modifier.weight(1f).fillMaxWidth()) {
-                                RadarView(fix, guidance, nearby)
-                                guidance.camera?.let { AlertCard(it, guidance.distanceMeters, guidance.overLimit, Modifier.align(Alignment.TopCenter)) }
-                            }
-                            ActionRow(viewModel::report, viewModel::undo, viewModel::commitReport, viewModel::ignoreActive, activeCamera = guidance.camera)
-                        }
-                        PlayerCard(
-                            media = media,
-                            phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
-                            onCommand = { cmd -> scope.launch { viewModel.mediaCommand(cmd) } },
-                            onSeek = { position -> scope.launch { viewModel.mediaCommand(MediaCmd.SEEK, position) } },
-                            apps = mediaApps,
-                            onLaunch = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.LAUNCH, pkg = pkg) } },
-                            onSelect = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.SELECT, pkg = pkg) } },
-                            modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
-                        )
-                    }
+                    DashboardMain(viewModel, onOpenSettings = { scope.launch { pager.animateScrollToPage(1) } })
                 } else {
                     DashboardSettings(
                         link = link,
@@ -190,33 +159,6 @@ private fun FreshnessBanner(lastSyncAt: Long) {
 }
 
 @Composable
-private fun TopStrip(speed: Double, limit: Int?, overLimit: Boolean, vehicle: VehicleState, phoneConnected: Boolean) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                "${speed.roundToInt()}",
-                fontSize = 72.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (overLimit) VaPianColors.Danger else MaterialTheme.colorScheme.onBackground,
-            )
-            Text(" km/h", fontSize = 24.sp, modifier = Modifier.padding(bottom = 12.dp), color = MaterialTheme.colorScheme.onBackground)
-        }
-        if (limit != null) SpeedLimitSign(limit)
-        Spacer(Modifier.weight(1f))
-        VehicleChips(vehicle)
-        // Shown only when something is wrong: a connected phone needs no indicator.
-        if (!phoneConnected) {
-            Icon(
-                Icons.Filled.PhonelinkOff,
-                contentDescription = "Telefono non collegato",
-                Modifier.size(40.dp),
-                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-            )
-        }
-    }
-}
-
-@Composable
 internal fun SpeedLimitSign(limit: Int) {
     Box(
         Modifier.size(72.dp).clip(CircleShape).background(Color.White).padding(6.dp).clip(CircleShape).background(VaPianColors.Danger).padding(6.dp)
@@ -225,28 +167,6 @@ internal fun SpeedLimitSign(limit: Int) {
     ) {
         Text("$limit", color = Color.Black, fontSize = 28.sp, fontWeight = FontWeight.Bold)
     }
-}
-
-/** Only shows what the car actually reports; a head unit without the CAN bridge simply shows nothing here. */
-@Composable
-private fun VehicleChips(vehicle: VehicleState) {
-    if (!vehicle.connected) return
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (vehicle.anyDoorOpen) Chip("PORTA APERTA", VaPianColors.Warning)
-        vehicle.gearCode?.let { Chip("MARCIA $it", MaterialTheme.colorScheme.surface) }
-    }
-}
-
-@Composable
-private fun Chip(text: String, background: Color) {
-    val dark = background == VaPianColors.Warning
-    Text(
-        text,
-        Modifier.clip(RoundedCornerShape(10.dp)).background(background).padding(horizontal = 12.dp, vertical = 8.dp),
-        color = if (dark) Color.Black else MaterialTheme.colorScheme.onSurface,
-        fontSize = 18.sp,
-        fontWeight = FontWeight.SemiBold,
-    )
 }
 
 @Composable
@@ -272,65 +192,36 @@ internal fun ActionRow(
     activeCamera: SpeedCamera?,
 ) {
     val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
-    var pending by remember { mutableStateOf<SpeedCamera?>(null) }
-    var secondsLeft by remember { mutableIntStateOf(0) }
-    var notice by remember { mutableStateOf<String?>(null) }
+    val flow = rememberReportFlow(report, undo, commit)
 
     Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-    notice?.let {
-        Text(it, color = VaPianColors.Warning, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
-    }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
-        val reporting = pending
-        if (reporting == null) {
-            Button(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    scope.launch {
-                        val camera = report()
-                        if (camera == null) {
-                            // A silent failure on this button would be the worst outcome: say why nothing happened.
-                            notice = "Nessuna posizione GPS: riprova tra qualche secondo"
-                            delay(4000)
-                            notice = null
-                            return@launch
-                        }
-                        pending = camera
-                        // 5 s undo window: only after it expires is the report pushed to the phone.
-                        for (left in UNDO_SECONDS downTo 1) {
-                            secondsLeft = left
-                            delay(1000)
-                            if (pending != camera) return@launch // undone
-                        }
-                        pending = null
-                        commit()
-                    }
-                },
-                modifier = Modifier.height(96.dp).width(420.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Danger, contentColor = Color.White),
-            ) { Text("SEGNALA AUTOVELOX", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
-        } else {
-            Button(
-                onClick = {
-                    val toUndo = pending
-                    pending = null
-                    if (toUndo != null) scope.launch { undo(toUndo) }
-                },
-                modifier = Modifier.height(96.dp).width(420.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Warning, contentColor = Color.Black),
-            ) { Text("ANNULLA SEGNALAZIONE ($secondsLeft)", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
+        flow.notice?.let {
+            Text(it, color = VaPianColors.Warning, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
         }
-        if (activeCamera?.source == CameraSource.OPENSTREETMAP) {
-            Button(
-                onClick = { scope.launch { ignoreActive() } },
-                modifier = Modifier.height(96.dp).width(220.dp),
-                shape = RoundedCornerShape(20.dp),
-            ) { Text("IGNORA", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
+            if (flow.pending == null) {
+                Button(
+                    onClick = flow::report,
+                    modifier = Modifier.height(96.dp).width(420.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Danger, contentColor = Color.White),
+                ) { Text("SEGNALA AUTOVELOX", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
+            } else {
+                Button(
+                    onClick = flow::undo,
+                    modifier = Modifier.height(96.dp).width(420.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Warning, contentColor = Color.Black),
+                ) { Text("ANNULLA SEGNALAZIONE (${flow.secondsLeft})", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
+            }
+            if (activeCamera?.source == CameraSource.OPENSTREETMAP) {
+                Button(
+                    onClick = { scope.launch { ignoreActive() } },
+                    modifier = Modifier.height(96.dp).width(220.dp),
+                    shape = RoundedCornerShape(20.dp),
+                ) { Text("IGNORA", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            }
         }
-    }
     }
 }
 
@@ -434,4 +325,3 @@ private fun PairingDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-private const val UNDO_SECONDS = 5

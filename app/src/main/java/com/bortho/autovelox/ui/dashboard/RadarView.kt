@@ -36,6 +36,9 @@ fun RadarView(
     cameras: List<SpeedCamera>,
     modifier: Modifier = Modifier,
     rangeMeters: Double = DEFAULT_RANGE_METERS,
+    /** 0 = idle; 0..1 plays the "reported" animation: waves leave the driver and the rings light up as they pass. */
+    pulse: Float = 0f,
+    accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     val heading = guidance.headingDeg
     val ringColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
@@ -48,9 +51,34 @@ fun RadarView(
             val scale = (carY * 0.95f) / rangeMeters.toFloat() // px per meter
 
             // distance rings
+            val maxRadius = rangeMeters.toFloat() * scale
             for (fraction in listOf(0.25f, 0.5f, 0.75f, 1f)) {
                 val r = (rangeMeters.toFloat() * fraction) * scale
                 drawCircle(ringColor, radius = r, center = Offset(carX, carY), style = Stroke(width = 2.dp.toPx()))
+                // a ring lights up while a wave crosses it, then fades back
+                if (pulse > 0f && pulse < 1f) {
+                    val crossing = fraction * 0.8f // the wave reaches the outer ring at 80% of the animation
+                    val since = ((pulse - crossing) / 0.3f).coerceIn(-1f, 1f)
+                    val glow = if (since < 0f) 0f else 1f - since
+                    if (glow > 0f) drawCircle(accent.copy(alpha = 0.85f * glow), radius = r, center = Offset(carX, carY), style = Stroke(width = (2 + 3 * glow).dp.toPx()))
+                }
+            }
+            if (pulse > 0f && pulse < 1f) {
+                // three waves, one after the other, easing out as they travel
+                for (i in 0..2) {
+                    val p = ((pulse - i * 0.12f) / 0.76f).coerceIn(0f, 1f)
+                    if (p <= 0f || p >= 1f) continue
+                    val eased = 1f - (1f - p) * (1f - p)
+                    drawCircle(
+                        accent.copy(alpha = (1f - p) * 0.5f),
+                        radius = eased * maxRadius * 1.05f,
+                        center = Offset(carX, carY),
+                        style = Stroke(width = (2 + 7 * (1f - p)).dp.toPx()),
+                    )
+                }
+                // a soft disc around the driver, collapsing as the first wave leaves
+                val flash = (1f - pulse * 1.6f).coerceIn(0f, 1f)
+                if (flash > 0f) drawCircle(accent.copy(alpha = 0.28f * flash), radius = 64.dp.toPx() * (1f + pulse), center = Offset(carX, carY))
             }
 
             if (fix != null && heading != null) {

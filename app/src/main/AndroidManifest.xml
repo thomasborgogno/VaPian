@@ -24,6 +24,9 @@
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VOICE_COMMAND" />
+        </intent>
     </queries>
 
     <application
