@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.stateIn
 import androidx.lifecycle.viewModelScope
 import com.bortho.autovelox.core.model.UserSettings
 import com.bortho.autovelox.link.MediaApps
+import com.bortho.autovelox.link.VoiceAssistant
+import com.bortho.autovelox.link.VoiceAssistantResult
 import kotlinx.coroutines.launch
 import com.bortho.autovelox.core.guidance.GuidanceState
 import com.bortho.autovelox.core.guidance.LocationFix
@@ -38,6 +40,7 @@ class DashboardViewModel @Inject constructor(
     private val radioLink: RadioLinkClient,
     radioMedia: RadioMedia,
     private val settings: SettingsStore,
+    private val voiceAssistant: VoiceAssistant,
 ) : ViewModel() {
     val guidanceState: StateFlow<GuidanceState> = guidance.state
     val fix: StateFlow<LocationFix?> = guidance.fix
@@ -95,6 +98,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     suspend fun mediaCommand(cmd: String, positionMs: Long = 0, pkg: String = "") = radioLink.sendMediaCommand(MediaCmd(cmd, positionMs, pkg))
+
+    /** Asks the phone to open its voice assistant through the hands-free link (works with the phone's screen off). */
+    suspend fun openAssistant(): VoiceAssistantResult = voiceAssistant.start(settings.phoneAddress)
 
     suspend fun report(): SpeedCamera? = guidance.reportNow()
     suspend fun undo(camera: SpeedCamera) = guidance.undoReport(camera)

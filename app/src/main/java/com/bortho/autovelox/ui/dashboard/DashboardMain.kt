@@ -1,6 +1,6 @@
 package com.bortho.autovelox.ui.dashboard
 
-import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import com.bortho.autovelox.link.LinkStatus
 import com.bortho.autovelox.link.MediaCmd
+import com.bortho.autovelox.link.VoiceAssistantResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -71,7 +72,22 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
     val alertLevel by animateFloatAsState(if (alert) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "alertLevel")
 
     Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        LeftRail(onOpenSettings)
+        val context = LocalContext.current
+        LeftRail(
+            onOpenSettings = onOpenSettings,
+            // the assistant is the phone's, reached over the hands-free link: offered once a phone is chosen
+            showAssistant = viewModel.phoneAddress != null,
+            onAssistant = {
+                scope.launch {
+                    val message = when (viewModel.openAssistant()) {
+                        VoiceAssistantResult.STARTED -> null
+                        VoiceAssistantResult.NOT_CONNECTED -> "Vivavoce del telefono non collegato"
+                        VoiceAssistantResult.UNSUPPORTED -> "L'autoradio non permette di aprire l'assistente"
+                    }
+                    if (message != null) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
+            },
+        )
         Row(Modifier.weight(1f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             RadarCard(
                 progress = layoutProgress,
@@ -123,17 +139,10 @@ internal fun rememberHeld(active: Boolean, holdMs: Long): Boolean {
 
 /** The black strip on the left: shortcuts to the assistant and to the settings, room for more apps later. */
 @Composable
-private fun LeftRail(onOpenSettings: () -> Unit) {
-    val context = LocalContext.current
-    // the assistant is only offered if something on this device answers the voice-command intent
-    val assistant = remember {
-        Intent(Intent.ACTION_VOICE_COMMAND).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
-            runCatching { context.packageManager.queryIntentActivities(it, 0).isNotEmpty() }.getOrDefault(false)
-        }
-    }
+private fun LeftRail(onOpenSettings: () -> Unit, showAssistant: Boolean, onAssistant: () -> Unit) {
     Column(Modifier.width(60.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (assistant != null) {
-            RailButton(Icons.Outlined.Mic, "Assistente", onClick = { runCatching { context.startActivity(assistant) } })
+        if (showAssistant) {
+            RailButton(Icons.Outlined.Mic, "Assistente del telefono", onClick = onAssistant)
         }
         RailButton(Icons.Outlined.Settings, "Impostazioni", onOpenSettings)
     }
