@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -130,11 +132,20 @@ internal fun RadarCard(
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(top = lerp(196.dp, 72.dp, p), bottom = bottomRoom)
-                .pointerInput(flow) { detectTapGestures(onTap = { flow.report() }) },
+                .padding(top = lerp(196.dp, 72.dp, p), bottom = bottomRoom),
         ) {
             RadarView(fix, guidance, cameras, pulse = pulse.value, accent = tint.copy(alpha = 1f).let { if (alertLevel > 0.05f) it else MaterialTheme.colorScheme.primary })
         }
+
+        // tapping reports a camera, but only in the lower half of the card: the upper half (speed, limit, time) is for the
+        // card switch and must never report by accident
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.5f)
+                .pointerInput(flow) { detectTapGestures(onTap = { flow.report() }) },
+        )
 
         // time and date: top left, gone when the alert takes over
         if (p < 0.98f) {
@@ -194,7 +205,7 @@ internal fun RadarCard(
 
         // a quiet hint while calm
         Text(
-            "Tocca il radar per segnalare un autovelox",
+            "Tocca qui sotto per segnalare un autovelox",
             Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp).alpha((1f - p) * (1f - pendingRoom) * 0.45f),
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.onSurface,

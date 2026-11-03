@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +48,7 @@ import kotlinx.coroutines.launch
  * cards follow them continuously, so nothing jumps.
  */
 @Composable
-internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> Unit) {
+internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> Unit, onLayoutProgress: (Float) -> Unit = {}) {
     val guidance by viewModel.guidanceState.collectAsState()
     val fix by viewModel.fix.collectAsState()
     val nearby by viewModel.nearby.collectAsState()
@@ -66,6 +67,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
     // cards back. An alert always wins: while a camera approaches the radar card is big whatever was chosen.
     var radarChosen by remember { mutableStateOf(false) }
     val layoutProgress by animateFloatAsState(if (alert || radarChosen) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "layoutProgress")
+    SideEffect { onLayoutProgress(layoutProgress) } // the bars under the cards follow the same widths
     val alertLevel by animateFloatAsState(if (alert) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "alertLevel")
 
     Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

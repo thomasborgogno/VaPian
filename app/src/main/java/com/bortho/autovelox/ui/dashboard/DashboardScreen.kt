@@ -20,6 +20,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import androidx.compose.foundation.background
+import androidx.compose.ui.unit.lerp
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -97,6 +100,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
     val alertSettings by viewModel.alertSettings.collectAsState()
     val regions by viewModel.regions.collectAsState()
     var duck by remember { mutableIntStateOf(viewModel.duckPercent) }
+    var layoutProgress by remember { mutableFloatStateOf(0f) }
     val coverBackground by viewModel.coverBackground.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -113,7 +117,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
         Box(Modifier.weight(1f).fillMaxWidth()) {
             HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
                 if (page == 0) {
-                    DashboardMain(viewModel, onOpenSettings = { scope.launch { pager.animateScrollToPage(1) } })
+                    DashboardMain(viewModel, onOpenSettings = { scope.launch { pager.animateScrollToPage(1) } }, onLayoutProgress = { layoutProgress = it })
                 } else {
                     DashboardSettings(
                         link = link,
@@ -133,10 +137,23 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                 }
             }
         }
-        // thin bars at the bottom: brightness in the left half, volume in the right half
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
-            BrightnessBar(viewModel, Modifier.weight(1f))
-            VolumeBar(Modifier.weight(1f))
+        // thin bars at the bottom. On the driving page each is as wide as the card above it (same weights as the cards, so
+        // they resize together), nudged a little to the left: the icon starts before the card and the bar ends before its
+        // end. On the settings page brightness takes the left half and volume the right half.
+        val aligned by animateFloatAsState(if (pager.currentPage == 0) 1f else 0f, tween(500), label = "alignedBars")
+        val calmLeft = 1f
+        val calmRight = 2f
+        val alertLeft = 2.2f
+        val alertRight = 1f
+        val cardLeft = androidx.compose.ui.util.lerp(calmLeft, alertLeft, layoutProgress)
+        val cardRight = androidx.compose.ui.util.lerp(calmRight, alertRight, layoutProgress)
+        Row(
+            Modifier.fillMaxWidth().padding(start = lerp(16.dp, 73.dp, aligned), end = lerp(16.dp, 22.dp, aligned)),
+            horizontalArrangement = Arrangement.spacedBy(lerp(32.dp, 14.dp, aligned)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BrightnessBar(viewModel, Modifier.weight(androidx.compose.ui.util.lerp(1f, cardLeft, aligned)))
+            VolumeBar(Modifier.weight(androidx.compose.ui.util.lerp(1f, cardRight, aligned)))
         }
     }
 
