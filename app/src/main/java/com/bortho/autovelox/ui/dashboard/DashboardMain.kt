@@ -108,7 +108,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
 
 /** True while [active], and for [holdMs] after it stops. */
 @Composable
-private fun rememberHeld(active: Boolean, holdMs: Long): Boolean {
+internal fun rememberHeld(active: Boolean, holdMs: Long): Boolean {
     var held by remember { mutableStateOf(active) }
     LaunchedEffect(active) {
         if (active) {

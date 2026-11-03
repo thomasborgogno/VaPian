@@ -136,6 +136,7 @@ Primario: `MediaController`/`MediaBrowser` sulla sessione AVRCP; comandi con `Tr
    Il radar della Dashboard usa gli stessi badge e colori.
    **Account** ✅ ospite (anonimo Firebase, silenzioso) o **Google** via Credential Manager: l'accesso *collega* la credenziale all'ospite, quindi uid e
    segnalazioni restano (se l'account Google era già usato altrove si passa a quello). **Guida** ✅ terza scheda, a tutto schermo e con lo schermo sempre acceso: tre viste
+   **Guida, aggiornata:** la vista "radar" è la card del radar della Dashboard (orario e data, velocità, radar con le onde; con un autovelox in arrivo la velocità cresce, compaiono limite e distanza e lo sfondo vira ad ambra/rosso). Si segnala toccando la metà bassa del radar, con "Annulla" tondo; non compare nulla del player né delle barre. Un telefono in orizzontale (largo ma basso, < 480 dp) resta il telefono e non diventa Dashboard: lì orario e velocità stanno sulla stessa riga.
    (velocità + radar, mappa scura, mappa) con scheda di avviso e Segnala/Ignora; gli avvisi vocali vengono dallo stesso `GuidanceController` che gira anche a schermo spento.
    **OpenStreetMap** ✅ account proprio (OAuth 2 + PKCE, client pubblico, token cifrato con chiave Keystore; `osm/`): pubblica un proprio autovelox approvato come nodo
    `highway=speed_camera` e, se già pubblicato, lo elimina anche da OSM; ogni scrittura chiede conferma. Gli endpoint sono in `BuildConfig` e si possono puntare alla

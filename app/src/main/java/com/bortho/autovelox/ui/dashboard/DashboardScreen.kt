@@ -204,48 +204,6 @@ internal fun AlertCard(camera: SpeedCamera, distance: Double?, overLimit: Boolea
 }
 
 @Composable
-internal fun ActionRow(
-    report: suspend () -> SpeedCamera?,
-    undo: suspend (SpeedCamera) -> Unit,
-    commit: () -> Unit,
-    ignoreActive: suspend () -> Unit,
-    activeCamera: SpeedCamera?,
-) {
-    val scope = rememberCoroutineScope()
-    val flow = rememberReportFlow(report, undo, commit)
-
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        flow.notice?.let {
-            Text(it, color = VaPianColors.Warning, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
-            if (flow.pending == null) {
-                Button(
-                    onClick = flow::report,
-                    modifier = Modifier.height(96.dp).width(420.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Danger, contentColor = Color.White),
-                ) { Text("SEGNALA AUTOVELOX", fontSize = 26.sp, fontWeight = FontWeight.Bold) }
-            } else {
-                Button(
-                    onClick = flow::undo,
-                    modifier = Modifier.height(96.dp).width(420.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = VaPianColors.Warning, contentColor = Color.Black),
-                ) { Text("ANNULLA SEGNALAZIONE (${flow.secondsLeft})", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
-            }
-            if (activeCamera?.source == CameraSource.OPENSTREETMAP) {
-                Button(
-                    onClick = { scope.launch { ignoreActive() } },
-                    modifier = Modifier.height(96.dp).width(220.dp),
-                    shape = RoundedCornerShape(20.dp),
-                ) { Text("IGNORA", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
-            }
-        }
-    }
-}
-
-@Composable
 private fun VolumeBar(modifier: Modifier) {
     val context = LocalContext.current
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }

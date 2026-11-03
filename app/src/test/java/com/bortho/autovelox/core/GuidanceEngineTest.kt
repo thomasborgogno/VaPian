@@ -97,6 +97,9 @@ class RoleDetectorTest {
     @Test
     fun largeLandscapeBecomesDashboard() {
         assertEquals(DeviceRole.DASHBOARD, RoleDetector.detect(1280, 655, carUiMode = false))
+        // a phone on its side is wide but low: it stays the phone app
+        assertEquals(DeviceRole.PHONE, RoleDetector.detect(914, 411, carUiMode = false))
+        assertEquals(DeviceRole.DASHBOARD, RoleDetector.detect(914, 411, carUiMode = true))
     }
 
     @Test

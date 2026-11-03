@@ -99,6 +99,13 @@ internal fun RadarCard(
     flow: ReportFlow,
     onIgnore: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The hint under the radar while calm. */
+    showHint: Boolean = true,
+    /** Low and wide screens (a phone on its side): time and speed share the top line, the radar gets the height. */
+    compact: Boolean = false,
+    cornerRadius: androidx.compose.ui.unit.Dp = 36.dp,
+    /** Extra controls drawn over the card (the phone's exit / view buttons). */
+    overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {},
 ) {
     // while the alert fades out the camera is already gone: keep showing what it said until the transition is over
     val shownCamera = rememberLastNonNull(camera)
@@ -122,7 +129,7 @@ internal fun RadarCard(
 
     Box(
         modifier
-            .clip(RoundedCornerShape(36.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(background)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBackgroundTap),
     ) {
@@ -132,7 +139,7 @@ internal fun RadarCard(
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(top = lerp(196.dp, 72.dp, p), bottom = bottomRoom),
+                .padding(top = lerp(if (compact) 28.dp else 196.dp, 72.dp, p), bottom = bottomRoom),
         ) {
             RadarView(fix, guidance, cameras, pulse = pulse.value, accent = tint.copy(alpha = 1f).let { if (alertLevel > 0.05f) it else MaterialTheme.colorScheme.primary })
         }
@@ -155,8 +162,12 @@ internal fun RadarCard(
         // speed: centred under the clock when calm, big at the top left during an alert
         Row(
             Modifier
-                .align(BiasAlignment(lerp(0f, -1f, p), -1f))
-                .padding(top = lerp(92.dp, 22.dp, p), start = lerp(0.dp, 28.dp, p)),
+                .align(BiasAlignment(lerp(if (compact) 1f else 0f, -1f, p), -1f))
+                .padding(
+                    top = lerp(if (compact) 22.dp else 92.dp, 22.dp, p),
+                    start = lerp(0.dp, 28.dp, p),
+                    end = lerp(if (compact) 28.dp else 0.dp, 0.dp, p),
+                ),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -206,7 +217,7 @@ internal fun RadarCard(
         // a quiet hint while calm
         Text(
             "Tocca qui sotto per segnalare un autovelox",
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp).alpha((1f - p) * (1f - pendingRoom) * 0.45f),
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp).alpha(if (showHint) (1f - p) * (1f - pendingRoom) * 0.45f else 0f),
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -249,6 +260,8 @@ internal fun RadarCard(
                 }
             }
         }
+
+        overlay()
     }
 }
 
