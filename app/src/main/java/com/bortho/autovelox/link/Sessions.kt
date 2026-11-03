@@ -26,12 +26,16 @@ interface MediaSource {
     val state: Flow<MediaState>
     suspend fun cover(coverId: String): ByteArray?
     fun command(cmd: MediaCmd)
+
+    /** Launchable apps and active players; emits when either changes. */
+    val apps: Flow<MediaApps> get() = kotlinx.coroutines.flow.emptyFlow()
 }
 
 /** Radio side: receives what the phone is playing. Callbacks run on the link's receive loop: keep them fast. */
 interface MediaListener {
     fun onState(state: MediaState)
     fun onCover(coverId: String, jpeg: ByteArray)
+    fun onApps(apps: MediaApps) = Unit
 }
 
 /** What the phone side needs from local storage. */
@@ -42,6 +46,9 @@ interface PhoneStore {
     suspend fun regions(): List<RegionDataset>
     suspend fun blacklist(): List<String>
     suspend fun settings(): UserSettings
+
+    /** Alert settings edited on the radio: stored (and replicated) like an edit made on the phone. */
+    suspend fun saveSettings(settings: UserSettings) = Unit
 }
 
 /** What the radio side needs from local storage. */
@@ -56,6 +63,10 @@ interface RadioStore {
     suspend fun applyRegion(name: String, version: Long, cameras: List<SpeedCamera>)
     suspend fun replaceBlacklist(cameraIds: List<String>)
     suspend fun saveSettings(settings: UserSettings)
+
+    /** Alert settings edited on the radio and not yet delivered to the phone, or null. They win over the phone's snapshot. */
+    suspend fun pendingSettings(): UserSettings? = null
+    suspend fun markSettingsSent() = Unit
 
     /** Called only after a complete, verified sync: feeds the "data is N days old" reminder. */
     suspend fun markDatasetSynced(nowMs: Long)
@@ -81,6 +92,7 @@ class PhoneLinkSession(
     suspend fun run() = coroutineScope {
         // Media state is pushed only after the radio announced the capability in HELLO.
         var mediaJob: kotlinx.coroutines.Job? = null
+        var appsJob: kotlinx.coroutines.Job? = null
         while (true) {
             val frame = transport.receive() ?: break
             try {
@@ -88,6 +100,7 @@ class PhoneLinkSession(
                     val hello = Messages.decode<Hello>(frame)
                     if ("media" in hello.caps) {
                         mediaJob = launch { media.state.collect { send(Messages.encode(MsgType.MEDIA_STATE, it)) } }
+                        appsJob = launch { media.apps.collect { send(Messages.encode(MsgType.MEDIA_APPS, it)) } }
                     }
                 }
                 handle(frame)
@@ -96,6 +109,7 @@ class PhoneLinkSession(
             }
         }
         mediaJob?.cancel()
+        appsJob?.cancel()
     }
 
     private suspend fun send(bytes: ByteArray) = sendLock.withLock { transport.send(bytes) }
@@ -122,6 +136,16 @@ class PhoneLinkSession(
                 }
             }
             MsgType.MEDIA_CMD -> media?.command(Messages.decode(frame))
+            MsgType.SETTINGS_UPDATE -> {
+                val s = Messages.decode<SettingsSnapshot>(frame)
+                store.saveSettings(
+                    UserSettings(
+                        com.bortho.autovelox.core.model.AlertDistanceMode.fromWire(s.alertDistanceMode),
+                        s.alertDistanceMeters.coerceIn(UserSettings.MIN_ALERT_METERS, UserSettings.MAX_ALERT_METERS),
+                        s.toleranceFilterEnabled,
+                    ),
+                )
+            }
             MsgType.COVER_REQ -> {
                 val id = Messages.decode<CoverReq>(frame).coverId
                 media?.cover(id)?.let { send(Messages.encode(MsgType.COVER, Cover(id, it))) }
@@ -235,6 +259,11 @@ class RadioLinkSession(
     suspend fun flushOutbox() {
         for (report in store.pendingReports()) send(Messages.encode(MsgType.REPORT_CAMERA, report))
         for (ignore in store.pendingIgnores()) send(Messages.encode(MsgType.REPORT_IGNORE, ignore))
+        // settings changed on the dashboard travel first, so the snapshot the phone sends next already includes them
+        store.pendingSettings()?.let { s ->
+            send(Messages.encode(MsgType.SETTINGS_UPDATE, SettingsSnapshot(s.alertDistanceMode.wire, s.alertDistanceMeters, s.toleranceFilterEnabled)))
+            store.markSettingsSent()
+        }
     }
 
     private suspend fun send(bytes: ByteArray) = sendLock.withLock { transport.send(bytes) }
@@ -257,6 +286,7 @@ class RadioLinkSession(
                 MsgType.DATASET_CHUNK -> onChunk(Messages.decode(frame))
                 MsgType.DATASET_END -> onEnd(Messages.decode(frame))
                 MsgType.MEDIA_STATE -> onMediaState(Messages.decode(frame))
+                MsgType.MEDIA_APPS -> mediaListener?.onApps(Messages.decode(frame))
                 MsgType.COVER -> Messages.decode<Cover>(frame).let { mediaListener?.onCover(it.coverId, it.jpeg) }
                 MsgType.BLACKLIST_SNAPSHOT -> {
                     store.replaceBlacklist(Messages.decode<BlacklistSnapshot>(frame).cameraIds)

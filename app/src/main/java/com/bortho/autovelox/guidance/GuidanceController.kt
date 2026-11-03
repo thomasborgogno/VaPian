@@ -6,7 +6,6 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.Looper
@@ -19,6 +18,7 @@ import com.bortho.autovelox.core.guidance.AlertDistance
 import com.bortho.autovelox.core.guidance.GuidanceEngine
 import com.bortho.autovelox.core.guidance.GuidanceState
 import com.bortho.autovelox.core.guidance.LocationFix
+import com.bortho.autovelox.core.guidance.MusicDucking
 import com.bortho.autovelox.core.model.CameraSource
 import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.data.CameraRepository
@@ -80,7 +80,9 @@ class GuidanceController @Inject constructor(
 
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private var audioFocus: AudioFocusRequest? = null
+    private var duckedFrom: Int? = null
+    private var duckedTo: Int? = null
+    private val duckHandler = android.os.Handler(Looper.getMainLooper())
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) = onLocation(location)
@@ -115,7 +117,7 @@ class GuidanceController @Inject constructor(
         (context.getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(locationListener)
         camerasJob?.cancel()
         ignoredJob?.cancel()
-        releaseAudioFocus()
+        restoreMusic()
         tts?.shutdown()
         tts = null
         ttsReady = false
@@ -208,10 +210,10 @@ class GuidanceController @Inject constructor(
                 engineTts.setAudioAttributes(navigationAttributes())
                 engineTts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
-                    override fun onDone(utteranceId: String?) = releaseAudioFocus()
+                    override fun onDone(utteranceId: String?) = restoreMusic()
 
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) = releaseAudioFocus()
+                    override fun onError(utteranceId: String?) = restoreMusic()
                 })
                 ttsReady = true
             }
@@ -220,34 +222,57 @@ class GuidanceController @Inject constructor(
 
     private fun speak(camera: SpeedCamera, distanceMeters: Double) {
         if (!ttsReady) return
-        requestAudioFocus()
+        lowerMusic()
         val distance = if (distanceMeters >= 1000) "${(distanceMeters / 1000).roundToInt()} chilometri" else "${(distanceMeters / 10).roundToInt() * 10} metri"
         val limit = camera.limit?.let { " Limite $it chilometri orari." } ?: ""
         tts?.speak("Attenzione: autovelox a $distance.$limit", TextToSpeech.QUEUE_FLUSH, null, camera.id)
     }
 
+    /**
+     * The alert is spoken on the alarm stream, not the music one, so that lowering the music (below) does not lower the
+     * voice too. Alert volume therefore follows the device's alarm volume.
+     */
     private fun navigationAttributes() = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+        .setUsage(AudioAttributes.USAGE_ALARM)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
 
-    private fun requestAudioFocus() {
-        if (audioFocus != null) return
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            .setAudioAttributes(navigationAttributes())
-            .build()
-        (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(request)
-        audioFocus = request
+    /**
+     * Lowers the music by the percentage set in the settings while the alert is spoken, and never takes audio focus:
+     * focus is what makes a player (or the head unit, over Bluetooth) pause, and the music must keep playing.
+     */
+    private fun lowerMusic() {
+        val percent = settings.duckPercent
+        if (percent <= 0) return
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val target = MusicDucking.target(current, percent)
+        if (duckedFrom == null && target < current) {
+            duckedFrom = current
+            duckedTo = target
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+        }
+        // safety net: the volume comes back even if the end of the utterance is never reported
+        duckHandler.removeCallbacksAndMessages(null)
+        duckHandler.postDelayed({ restoreMusic() }, MAX_DUCK_MS)
     }
 
-    private fun releaseAudioFocus() {
-        audioFocus?.let { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(it) }
-        audioFocus = null
+    private fun restoreMusic() {
+        duckHandler.removeCallbacksAndMessages(null)
+        val from = duckedFrom ?: return
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // if the user changed the volume in the meantime, theirs wins
+        if (MusicDucking.shouldRestore(audio.getStreamVolume(AudioManager.STREAM_MUSIC), duckedTo)) {
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, from, 0)
+        }
+        duckedFrom = null
+        duckedTo = null
     }
 
     private companion object {
         const val TAG = "Guidance"
         const val LOCATION_INTERVAL_MS = 1_000L
+        const val MAX_DUCK_MS = 15_000L
         const val REQUERY_METERS = 500.0
         const val SEARCH_RADIUS_METERS = 3_000.0
     }

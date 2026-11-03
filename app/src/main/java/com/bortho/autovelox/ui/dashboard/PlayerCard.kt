@@ -2,6 +2,7 @@ package com.bortho.autovelox.ui.dashboard
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,12 +16,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
@@ -43,7 +48,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bortho.autovelox.link.MediaApps
 import com.bortho.autovelox.link.MediaCmd
+import com.bortho.autovelox.link.SessionRef
 import com.bortho.autovelox.link.RadioMediaState
 import kotlinx.coroutines.delay
 
@@ -58,19 +65,31 @@ fun PlayerCard(
     onCommand: (String) -> Unit,
     /** Jump to this position (ms) in the phone's track. */
     onSeek: (Long) -> Unit,
+    /** Music apps to offer when nothing plays, and the players active on the phone (to switch between). */
+    apps: MediaApps? = null,
+    onLaunch: (String) -> Unit = {},
+    onSelect: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Card(modifier.fillMaxWidth()) {
         val track = media?.media
         if (track == null || track.state == "stopped" && track.title.isBlank()) {
+            val launchers = if (phoneConnected) apps?.launchers.orEmpty() else emptyList()
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("♪", fontSize = 64.sp)
                     Text(
                         if (phoneConnected) "Nessuna musica in riproduzione sul telefono" else "Telefono non collegato",
                         textAlign = TextAlign.Center,
                         fontSize = 20.sp,
                     )
+                    // start a music app on the phone: the apps are chosen in the phone's settings
+                    for (app in launchers) {
+                        Button(onClick = { onLaunch(app.pkg) }, Modifier.fillMaxWidth().height(64.dp)) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                            Text("  ${app.label}", fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             }
             return@Card
@@ -103,8 +122,16 @@ fun PlayerCard(
         // The controls and the progress bar always fit; the cover takes whatever height is left over, and the
         // secondary lines (album, source app) appear only when there is room for them.
         val roomy = maxHeight >= ROOMY_HEIGHT
-        val coverSize = (maxHeight - if (roomy) 330.dp else 270.dp).coerceIn(0.dp, maxOf(0.dp, maxWidth - 32.dp))
+        val coverSize = (maxHeight - (if (roomy) 300.dp else 250.dp) - 52.dp).coerceIn(0.dp, maxOf(0.dp, maxWidth - 32.dp))
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            AppSwitcher(
+                current = apps?.sessions?.firstOrNull { it.selected },
+                fallbackLabel = track.app,
+                apps = apps,
+                onSelect = onSelect,
+                onLaunch = onLaunch,
+                modifier = Modifier.align(Alignment.Start),
+            )
             val cover = remember(media.cover) {
                 media.cover?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
             }
@@ -125,13 +152,13 @@ fun PlayerCard(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
-            Text(track.artist, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (roomy && track.album.isNotBlank()) {
-                Text(track.album, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-            }
-            if (roomy && track.app.isNotBlank()) {
-                Text(track.app, fontSize = 14.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            }
+            Text(
+                listOf(track.artist, track.album).filter { it.isNotBlank() }.joinToString(" · "),
+                fontSize = 20.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
             Spacer(Modifier.weight(1f))
 
             if (track.durationMs > 0) {
@@ -146,8 +173,9 @@ fun PlayerCard(
                     optimistic != null -> optimistic.first
                     else -> position
                 }
-                Slider(
+                WavySeekBar(
                     value = (shown.toFloat() / track.durationMs).coerceIn(0f, 1f),
+                    playing = playing,
                     onValueChange = { dragging = it },
                     onValueChangeFinished = {
                         dragging?.let {
@@ -157,7 +185,6 @@ fun PlayerCard(
                         }
                         dragging = null
                     },
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(clock(shown), fontSize = 16.sp)
@@ -185,6 +212,62 @@ fun PlayerCard(
         }
         }
     }
+}
+
+/**
+ * Top-left of the player: icon and name of the app being shown; a tap opens a drop-down with the other apps (the ones
+ * playing on the phone and the ones offered from its settings). Picking one switches to it, and the phone stops the
+ * old player if it was playing.
+ */
+@Composable
+private fun AppSwitcher(
+    current: SessionRef?,
+    fallbackLabel: String,
+    apps: MediaApps?,
+    onSelect: (String) -> Unit,
+    onLaunch: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    val sessions = apps?.sessions.orEmpty()
+    // other active players first, then the launchable apps that are not running
+    val others: List<Triple<String, String, ByteArray>> =
+        sessions.filter { it.pkg != current?.pkg }.map { Triple(it.pkg, it.label, it.icon) } +
+            apps?.launchers.orEmpty().filter { l -> sessions.none { it.pkg == l.pkg } && l.pkg != current?.pkg }.map { Triple(it.pkg, it.label, it.icon) }
+    val running = sessions.map { it.pkg }.toSet()
+    val label = current?.label ?: fallbackLabel
+
+    Box(modifier) {
+        Row(
+            Modifier.clip(RoundedCornerShape(20.dp)).then(if (others.isNotEmpty()) Modifier.clickable { open = true } else Modifier).padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AppIcon(current?.icon, Modifier.size(32.dp))
+            Text(label, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (others.isNotEmpty()) Icon(Icons.Filled.ArrowDropDown, contentDescription = "Cambia app")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for ((pkg, name, icon) in others) {
+                DropdownMenuItem(
+                    text = { Text(name, fontSize = 20.sp) },
+                    leadingIcon = { AppIcon(icon, Modifier.size(32.dp)) },
+                    onClick = {
+                        open = false
+                        if (pkg in running) onSelect(pkg) else onLaunch(pkg)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** The app's icon as received from the phone, or nothing while it is missing. */
+@Composable
+private fun AppIcon(png: ByteArray?, modifier: Modifier) {
+    val bitmap = remember(png) { png?.takeIf { it.isNotEmpty() }?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
+    if (bitmap != null) Image(bitmap, contentDescription = null, modifier = modifier.clip(RoundedCornerShape(8.dp)))
+    else Box(modifier)
 }
 
 private val ROOMY_HEIGHT = 450.dp

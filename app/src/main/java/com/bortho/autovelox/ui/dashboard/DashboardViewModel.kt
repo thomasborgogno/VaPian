@@ -1,6 +1,10 @@
 package com.bortho.autovelox.ui.dashboard
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.bortho.autovelox.core.model.UserSettings
+import com.bortho.autovelox.link.MediaApps
+import kotlinx.coroutines.launch
 import com.bortho.autovelox.core.guidance.GuidanceState
 import com.bortho.autovelox.core.guidance.LocationFix
 import com.bortho.autovelox.core.model.SpeedCamera
@@ -31,6 +35,24 @@ class DashboardViewModel @Inject constructor(
     val vehicle: StateFlow<VehicleState> = vehicle.state
     val linkStatus: StateFlow<LinkStatus> = radioLink.status
     val media: StateFlow<RadioMediaState?> = radioMedia.state
+    val mediaApps: StateFlow<MediaApps?> = radioMedia.apps
+
+    val alertSettings: StateFlow<UserSettings> = settings.alertSettings
+
+    /** Alert settings are edited here too: kept locally at once and sent to the phone (right away, or at the next connection). */
+    fun saveAlertSettings(next: UserSettings) {
+        settings.saveAlertSettings(next)
+        settings.settingsPending = true
+        viewModelScope.launch { radioLink.flushNow() }
+    }
+
+    var duckPercent: Int
+        get() = settings.duckPercent
+        set(value) { settings.duckPercent = value }
+
+    var brightness: Float
+        get() = settings.dashboardBrightness
+        set(value) { settings.dashboardBrightness = value }
 
     val lastDatasetSyncAt: Long get() = settings.lastDatasetSyncAt
     val phoneAddress: String? get() = settings.phoneAddress
@@ -39,7 +61,7 @@ class DashboardViewModel @Inject constructor(
         settings.phoneAddress = address
     }
 
-    suspend fun mediaCommand(cmd: String, positionMs: Long = 0) = radioLink.sendMediaCommand(MediaCmd(cmd, positionMs))
+    suspend fun mediaCommand(cmd: String, positionMs: Long = 0, pkg: String = "") = radioLink.sendMediaCommand(MediaCmd(cmd, positionMs, pkg))
 
     suspend fun report(): SpeedCamera? = guidance.reportNow()
     suspend fun undo(camera: SpeedCamera) = guidance.undoReport(camera)

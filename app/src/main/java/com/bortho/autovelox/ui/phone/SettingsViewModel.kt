@@ -3,6 +3,9 @@ package com.bortho.autovelox.ui.phone
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import android.content.Intent
+import com.bortho.autovelox.link.AppRef
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.bortho.autovelox.auth.AccountService
 import com.bortho.autovelox.auth.AccountState
 import com.bortho.autovelox.auth.SignInOutcome
@@ -19,12 +22,36 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val store: SettingsStore,
     private val sync: SyncEngine,
     private val accounts: AccountService,
     private val osm: com.bortho.autovelox.osm.OsmAccount,
 ) : ViewModel() {
     val osmLinked: StateFlow<Boolean> = osm.linked
+
+    /** Music apps shown on the dashboard when nothing is playing. */
+    val mediaApps: StateFlow<List<String>> = store.mediaApps
+
+    fun toggleMediaApp(pkg: String) {
+        val current = store.mediaApps.value
+        store.saveMediaApps(if (pkg in current) current - pkg else current + pkg)
+    }
+
+    /** Apps on this phone that can play music (they expose a media browser service), plus the usual ones if installed. */
+    fun installedMusicApps(): List<AppRef> {
+        val pm = appContext.packageManager
+        val packages = pm.queryIntentServices(Intent("android.media.browse.MediaBrowserService"), 0).map { it.serviceInfo.packageName } +
+            com.bortho.autovelox.data.SettingsStore.DEFAULT_MEDIA_APPS
+        return packages.distinct()
+            .filter { it != appContext.packageName }
+            .mapNotNull { pkg -> runCatching { AppRef(pkg, pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()) }.getOrNull() }
+            .sortedBy { it.label.lowercase() }
+    }
+
+    var duckPercent: Int
+        get() = store.duckPercent
+        set(value) { store.duckPercent = value }
     val osmUsername: StateFlow<String?> = osm.username
 
     fun osmSignIn() = osm.startSignIn()

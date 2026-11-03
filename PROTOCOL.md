@@ -120,6 +120,9 @@ Il player è quello del **telefono**, mostrato e controllato dall'autoradio sul 
 AVRCP della ROM, che resta un'alternativa da valutare). Il telefono lo spinge solo se la radio ha annunciato `media`
 nelle `caps` dell'`HELLO`.
 
+- `SETTINGS_UPDATE` 0x28 (radio → telefono): stesso payload di `SETTINGS_SNAPSHOT`, per le impostazioni di avviso modificate sulla dashboard. Se la radio le ha modificate offline le invia subito dopo `HELLO_ACK`, prima dello snapshot del telefono (quindi non vengono sovrascritte); il telefono le salva e le replica su Firestore. La distanza è limitata a 100–1000 m.
+- `MEDIA_APPS` 0x34 (telefono → radio): `{launchers: [{pkg, label}], sessions: [{pkg, label, playing, selected}]}`. `launchers` sono le app musicali scelte nelle impostazioni del telefono (la dashboard le propone quando non c'è musica); `sessions` i player attivi. Ogni voce porta anche `icon`, un PNG 64×64 dell'icona dell'app (vuoto se non disponibile). La dashboard mostra in alto a sinistra icona e nome dell'app attiva, con un menu a tendina per passare a un'altra app attiva o avviarne una tra quelle proposte.
+- `MEDIA_CMD` ha il campo opzionale `pkg` e due comandi in più: `launch` (avvia l'app sul telefono con un tasto PLAY indirizzato al pacchetto) e `select` (mostra la sessione di quell'app e la avvia se era ferma). In entrambi i casi, se un altro player stava suonando, il telefono lo mette in pausa: un solo player alla volta.
 - `MEDIA_STATE` (telefono → radio, CBOR): `{state: playing|paused|stopped, title, artist, album, durationMs, positionMs, ts, app, coverId}`.
   Inviato a ogni cambiamento e circa ogni secondo mentre suona. La radio **estrapola** la posizione dall'istante in
   cui riceve il messaggio, con il proprio orologio: i due orologi non devono coincidere.

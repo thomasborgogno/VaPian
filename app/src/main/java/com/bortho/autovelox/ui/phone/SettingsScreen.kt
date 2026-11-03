@@ -16,6 +16,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,7 +31,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,6 +84,8 @@ fun SettingsScreen(
     val accountMessage by settingsViewModel.accountMessage.collectAsState()
     val activityContext = LocalContext.current
     val osmLinked by settingsViewModel.osmLinked.collectAsState()
+    val mediaApps by settingsViewModel.mediaApps.collectAsState()
+    var duck by remember { mutableIntStateOf(settingsViewModel.duckPercent) }
     val osmUsername by settingsViewModel.osmUsername.collectAsState()
 
     // back from the system settings screen: re-read the notification-access permission
@@ -223,6 +228,48 @@ fun SettingsScreen(
         }
 
         // ---- OpenStreetMap data -----------------------------------------------------------------------------
+        // ---- music -------------------------------------------------------------------------------------------
+        item { SectionTitle("Musica") }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("App da proporre sull'autoradio", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Quando non c'è musica in riproduzione, l'autoradio mostra questi pulsanti per avviarla sul telefono.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    val installed = remember { settingsViewModel.installedMusicApps() }
+                    if (installed.isEmpty()) Text("Nessuna app musicale trovata sul telefono.", style = MaterialTheme.typography.bodyMedium)
+                    for (app in installed) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { settingsViewModel.toggleMediaApp(app.pkg) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = app.pkg in mediaApps, onCheckedChange = { settingsViewModel.toggleMediaApp(app.pkg) })
+                            Text(app.label)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Musica durante gli avvisi", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "La musica non si ferma: viene solo abbassata del $duck% mentre l'avviso è parlato.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Slider(
+                        value = duck.toFloat(),
+                        onValueChange = { duck = (it / 10).roundToInt() * 10; settingsViewModel.duckPercent = duck },
+                        valueRange = 0f..100f,
+                        steps = 9,
+                    )
+                }
+            }
+        }
+
         item { SectionTitle("Dati autovelox") }
         if (DataFreshness.needsRefresh(lastOsm, System.currentTimeMillis())) {
             item {

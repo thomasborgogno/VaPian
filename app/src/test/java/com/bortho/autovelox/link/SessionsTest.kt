@@ -59,6 +59,8 @@ internal class FakePhoneStore(var regions: List<RegionDataset> = emptyList()) : 
     override suspend fun regions() = regions
     override suspend fun blacklist() = listOf("osm_1", "osm_2")
     override suspend fun settings() = UserSettings(AlertDistanceMode.DYNAMIC, 450, false)
+    var saved: UserSettings? = null
+    override suspend fun saveSettings(settings: UserSettings) { saved = settings }
 }
 
 internal class FakeRadioStore(
@@ -81,6 +83,9 @@ internal class FakeRadioStore(
     }
     override suspend fun replaceBlacklist(cameraIds: List<String>) { blacklist = cameraIds }
     override suspend fun saveSettings(settings: UserSettings) { this.settings = settings }
+    var pending: UserSettings? = null
+    override suspend fun pendingSettings() = pending
+    override suspend fun markSettingsSent() { pending = null }
     override suspend fun markDatasetSynced(nowMs: Long) { syncedAt = nowMs }
 }
 

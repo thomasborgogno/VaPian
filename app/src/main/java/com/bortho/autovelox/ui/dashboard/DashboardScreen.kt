@@ -1,6 +1,18 @@
 package com.bortho.autovelox.ui.dashboard
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.ContextWrapper
+import android.provider.Settings
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import com.bortho.autovelox.core.model.AlertDistanceMode
+import com.bortho.autovelox.core.model.UserSettings
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -86,6 +98,9 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
     val vehicle by viewModel.vehicle.collectAsState()
     val link by viewModel.linkStatus.collectAsState()
     val media by viewModel.media.collectAsState()
+    val mediaApps by viewModel.mediaApps.collectAsState()
+    val alertSettings by viewModel.alertSettings.collectAsState()
+    var duck by remember { mutableIntStateOf(viewModel.duckPercent) }
     val scope = rememberCoroutineScope()
 
     // The "data age" is read at composition and refreshed when the link finishes a sync.
@@ -121,6 +136,9 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                             phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED,
                             onCommand = { cmd -> scope.launch { viewModel.mediaCommand(cmd) } },
                             onSeek = { position -> scope.launch { viewModel.mediaCommand(MediaCmd.SEEK, position) } },
+                            apps = mediaApps,
+                            onLaunch = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.LAUNCH, pkg = pkg) } },
+                            onSelect = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.SELECT, pkg = pkg) } },
                             modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
                         )
                     }
@@ -129,13 +147,21 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                         link = link,
                         paired = viewModel.phoneAddress != null,
                         lastSyncAt = lastSync,
+                        settings = alertSettings,
+                        onSettings = viewModel::saveAlertSettings,
+                        duckPercent = duck,
+                        onDuck = { duck = it; viewModel.duckPercent = it },
                         onPair = { showPairing = true },
                         onDiagnostics = onOpenDiagnostics,
                     )
                 }
             }
         }
-        VolumeBar(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+        // thin bars at the bottom: brightness in the left half, volume in the right half
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+            BrightnessBar(viewModel, Modifier.weight(1f))
+            VolumeBar(Modifier.weight(1f))
+        }
     }
 
     if (showPairing) PairingDialog(onPick = { viewModel.choosePhone(it); showPairing = false }, onDismiss = { showPairing = false })
@@ -186,36 +212,96 @@ private fun TopStrip(speed: Double, limit: Int?, overLimit: Boolean, vehicle: Ve
     }
 }
 
-/** Settings page of the head unit, reached by swiping the dashboard from right to left. */
+/** Settings page of the head unit, reached by swiping the dashboard from right to left. Two scrolling columns. */
 @Composable
-private fun DashboardSettings(link: LinkStatus, paired: Boolean, lastSyncAt: Long, onPair: () -> Unit, onDiagnostics: () -> Unit) {
+private fun DashboardSettings(
+    link: LinkStatus,
+    paired: Boolean,
+    lastSyncAt: Long,
+    settings: UserSettings,
+    onSettings: (UserSettings) -> Unit,
+    duckPercent: Int,
+    onDuck: (Int) -> Unit,
+    onPair: () -> Unit,
+    onDiagnostics: () -> Unit,
+) {
     val age = DataFreshness.ageDays(lastSyncAt, System.currentTimeMillis())
-    Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Impostazioni", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Telefono", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                Text(linkText(link, paired), fontSize = 20.sp)
-                Button(onClick = onPair, Modifier.height(64.dp)) { Text(if (paired) "Cambia telefono" else "Scegli telefono", fontSize = 20.sp) }
+    Row(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Impostazioni", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Telefono", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text(linkText(link, paired), fontSize = 20.sp)
+                    Button(onClick = onPair, Modifier.height(64.dp)) { Text(if (paired) "Cambia telefono" else "Scegli telefono", fontSize = 20.sp) }
+                }
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Dati autovelox", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when (age) {
+                            null -> "Mai aggiornati"
+                            0 -> "Aggiornati oggi"
+                            1 -> "Aggiornati 1 giorno fa"
+                            else -> "Aggiornati $age giorni fa"
+                        },
+                        fontSize = 20.sp,
+                    )
+                }
+            }
+            Button(onClick = onDiagnostics, Modifier.height(64.dp)) { Text("Diagnostica", fontSize = 20.sp) }
+            Text("Scorri verso destra per tornare alla dashboard.", fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+        }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Avvisi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Distanza di preavviso", fontSize = 18.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        for ((mode, label) in listOf(AlertDistanceMode.FIXED to "Fissa", AlertDistanceMode.DYNAMIC to "Dinamica")) {
+                            FilterChip(
+                                selected = settings.alertDistanceMode == mode,
+                                onClick = { onSettings(settings.copy(alertDistanceMode = mode)) },
+                                label = { Text(label, fontSize = 20.sp, modifier = Modifier.padding(vertical = 10.dp)) },
+                            )
+                        }
+                    }
+                    Text(
+                        if (settings.alertDistanceMode == AlertDistanceMode.FIXED) "Sempre la stessa distanza." else "Cresce con la velocità e quando superi il limite.",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    )
+                    val fixed = settings.alertDistanceMode == AlertDistanceMode.FIXED
+                    Text("Distanza fissa: ${settings.alertDistanceMeters} m", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (fixed) 1f else 0.4f))
+                    Slider(
+                        value = settings.alertDistanceMeters.toFloat(),
+                        onValueChange = { onSettings(settings.copy(alertDistanceMeters = it.roundToInt())) },
+                        valueRange = UserSettings.MIN_ALERT_METERS.toFloat()..UserSettings.MAX_ALERT_METERS.toFloat(),
+                        steps = (UserSettings.MAX_ALERT_METERS - UserSettings.MIN_ALERT_METERS) / 50 - 1,
+                        enabled = fixed,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Tolleranza intelligente", fontSize = 20.sp)
+                            Text(
+                                "Niente avviso sonoro se vai almeno il 10% sotto il limite; scatta subito se acceleri.",
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            )
+                        }
+                        Switch(checked = settings.toleranceFilterEnabled, onCheckedChange = { onSettings(settings.copy(toleranceFilterEnabled = it)) })
+                    }
+                }
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Musica durante gli avvisi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text("La musica non si ferma: viene solo abbassata del $duckPercent% mentre l'avviso è parlato.", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    Slider(value = duckPercent.toFloat(), onValueChange = { onDuck((it / 10).roundToInt() * 10) }, valueRange = 0f..100f, steps = 9)
+                }
             }
         }
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Dati autovelox", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    when (age) {
-                        null -> "Mai aggiornati"
-                        0 -> "Aggiornati oggi"
-                        1 -> "Aggiornati 1 giorno fa"
-                        else -> "Aggiornati $age giorni fa"
-                    },
-                    fontSize = 20.sp,
-                )
-            }
-        }
-        Button(onClick = onDiagnostics, Modifier.height(64.dp)) { Text("Diagnostica", fontSize = 20.sp) }
-        Spacer(Modifier.weight(1f))
-        Text("Scorri verso destra per tornare alla dashboard.", fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
     }
 }
 
@@ -364,19 +450,60 @@ private fun VolumeBar(modifier: Modifier) {
     }
 
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Volume", Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onBackground)
-        Slider(
-            value = volume.toFloat(),
+        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Volume", Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onBackground)
+        ThinSlider(
+            value = if (max > 0) volume.toFloat() / max else 0f,
             onValueChange = {
-                volume = it.roundToInt()
+                volume = (it * max).roundToInt()
                 audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
             },
-            valueRange = 0f..max.toFloat(),
             modifier = Modifier.weight(1f),
         )
-        Text("$volume", fontSize = 22.sp, color = MaterialTheme.colorScheme.onBackground)
     }
 }
+
+/** Screen brightness of this app's window (no system permission needed); remembered between runs. */
+@Composable
+private fun BrightnessBar(viewModel: DashboardViewModel, modifier: Modifier) {
+    val context = LocalContext.current
+    var brightness by remember {
+        mutableFloatStateOf(
+            viewModel.brightness.takeIf { it >= 0f }
+                ?: (runCatching { Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(128) / 255f),
+        )
+    }
+    val window = remember(context) { context.findActivity()?.window }
+    // the window only takes over from the system's (possibly automatic) brightness once a value was chosen
+    var chosen by remember { mutableStateOf(viewModel.brightness >= 0f) }
+    LaunchedEffect(brightness, chosen) {
+        if (chosen) window?.let { w -> w.attributes = w.attributes.also { it.screenBrightness = brightness.coerceIn(MIN_BRIGHTNESS, 1f) } }
+    }
+
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(Icons.Filled.BrightnessMedium, contentDescription = "Luminosità", Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onBackground)
+        ThinSlider(
+            value = brightness,
+            onValueChange = {
+                brightness = it.coerceIn(MIN_BRIGHTNESS, 1f)
+                viewModel.brightness = brightness
+                chosen = true
+            },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+private fun Context.findActivity(): Activity? {
+    var c = this
+    while (c is ContextWrapper) {
+        if (c is Activity) return c
+        c = c.baseContext
+    }
+    return null
+}
+
+/** Never fully dark: a black screen in the car is indistinguishable from a crash. */
+private const val MIN_BRIGHTNESS = 0.05f
 
 @SuppressLint("MissingPermission")
 @Composable

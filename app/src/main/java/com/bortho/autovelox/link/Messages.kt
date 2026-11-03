@@ -27,10 +27,16 @@ object MsgType {
     const val BLACKLIST_SNAPSHOT = 0x26
     const val SETTINGS_SNAPSHOT = 0x27
 
+    /** Radio -> phone: alert settings edited on the dashboard (same payload as [SETTINGS_SNAPSHOT]). */
+    const val SETTINGS_UPDATE = 0x28
+
     const val MEDIA_STATE = 0x30
     const val MEDIA_CMD = 0x31
     const val COVER_REQ = 0x32
     const val COVER = 0x33
+
+    /** Phone -> radio: music apps the dashboard can open, and the players currently active on the phone. */
+    const val MEDIA_APPS = 0x34
 }
 
 const val PROTOCOL_VERSION = 2
@@ -127,9 +133,37 @@ data class MediaState(
     }
 }
 
-/** Transport control sent by the radio. [cmd] is one of [MediaCmd.PLAY] ... [MediaCmd.SEEK]. */
+/** A music app on the phone, with its launcher icon (small PNG, empty if unavailable). */
 @Serializable
-data class MediaCmd(val cmd: String, val positionMs: Long = 0) {
+class AppRef(val pkg: String, val label: String, val icon: ByteArray = ByteArray(0)) {
+    override fun equals(other: Any?) = other is AppRef && pkg == other.pkg && label == other.label && icon.contentEquals(other.icon)
+    override fun hashCode() = 31 * pkg.hashCode() + label.hashCode()
+    override fun toString() = "AppRef($pkg, $label)"
+}
+
+/** An active media session on the phone: [selected] is the one the dashboard is showing. */
+@Serializable
+class SessionRef(val pkg: String, val label: String, val playing: Boolean, val selected: Boolean, val icon: ByteArray = ByteArray(0)) {
+    override fun equals(other: Any?) =
+        other is SessionRef && pkg == other.pkg && label == other.label && playing == other.playing && selected == other.selected &&
+            icon.contentEquals(other.icon)
+    override fun hashCode() = 31 * pkg.hashCode() + label.hashCode() + (if (playing) 1 else 0) + (if (selected) 2 else 0)
+    override fun toString() = "SessionRef($pkg, playing=$playing, selected=$selected)"
+}
+
+/**
+ * What the dashboard offers besides the current track: [launchers] are the apps chosen in the phone's settings (shown
+ * when nothing is playing, to start one), [sessions] the players active right now (shown as a switcher when several).
+ */
+@Serializable
+data class MediaApps(val launchers: List<AppRef> = emptyList(), val sessions: List<SessionRef> = emptyList())
+
+/**
+ * Transport control sent by the radio. [cmd] is one of [MediaCmd.PLAY] ... [MediaCmd.SELECT]; [pkg] is only used by
+ * [MediaCmd.LAUNCH] and [MediaCmd.SELECT].
+ */
+@Serializable
+data class MediaCmd(val cmd: String, val positionMs: Long = 0, val pkg: String = "") {
     companion object {
         const val PLAY = "play"
         const val PAUSE = "pause"
@@ -137,6 +171,12 @@ data class MediaCmd(val cmd: String, val positionMs: Long = 0) {
         const val NEXT = "next"
         const val PREV = "prev"
         const val SEEK = "seek"
+
+        /** Start the music app [pkg] on the phone. */
+        const val LAUNCH = "launch"
+
+        /** Show the session of app [pkg] on the dashboard. */
+        const val SELECT = "select"
     }
 }
 

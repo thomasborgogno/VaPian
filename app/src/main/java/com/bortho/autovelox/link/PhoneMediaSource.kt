@@ -2,6 +2,12 @@ package com.bortho.autovelox.link
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.view.KeyEvent
+import com.bortho.autovelox.data.SettingsStore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import android.graphics.Bitmap
 import android.graphics.Bitmap.CompressFormat
 import android.media.MediaMetadata
@@ -32,12 +38,22 @@ import javax.inject.Singleton
 @Singleton
 class PhoneMediaSource @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val settings: SettingsStore,
 ) : MediaSource {
     private val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
     private val listener = ComponentName(context, MediaListenerService::class.java)
     private val main = Handler(Looper.getMainLooper())
 
     @Volatile private var controller: MediaController? = null
+
+    /** App the user picked on the dashboard when several players are active; it wins until its session goes away. */
+    @Volatile private var preferred: String? = null
+    private var reselect: (() -> Unit)? = null
+    private val sessions = MutableStateFlow<List<SessionRef>>(emptyList())
+
+    override val apps: Flow<MediaApps> = combine(sessions, settings.mediaApps) { active, packages ->
+        MediaApps(launchers = packages.mapNotNull { pkg -> installedLabel(pkg)?.let { AppRef(pkg, it, iconFor(pkg)) } }, sessions = active)
+    }.distinctUntilChanged()
     private val covers = HashMap<String, ByteArray>()
 
     fun hasAccess(): Boolean = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
@@ -51,6 +67,9 @@ class PhoneMediaSource @Inject constructor(
 
         fun publish() {
             trySend(build(controller))
+            sessions.value = manager.runCatching { getActiveSessions(listener) }.getOrDefault(emptyList()).map {
+                SessionRef(it.packageName, appLabel(it.packageName), it.playbackState?.state == PlaybackState.STATE_PLAYING, it.packageName == controller?.packageName, iconFor(it.packageName))
+            }
         }
 
         val callback = object : MediaController.Callback() {
@@ -79,6 +98,10 @@ class PhoneMediaSource @Inject constructor(
         } catch (e: SecurityException) {
             Log.w(TAG, "no notification access: ${e.message}")
         }
+        reselect = {
+            attach(pick(manager.runCatching { getActiveSessions(listener) }.getOrNull()))
+            publish()
+        }
         publish()
 
         // position updates: the radio extrapolates, but a fresh reading each second keeps it honest
@@ -94,6 +117,7 @@ class PhoneMediaSource @Inject constructor(
             runCatching { manager.removeOnActiveSessionsChangedListener(sessionsListener) }
             controller?.unregisterCallback(callback)
             controller = null
+            reselect = null
         }
     }
 
@@ -101,9 +125,11 @@ class PhoneMediaSource @Inject constructor(
         controller = pick(controllers)
     }
 
-    /** The playing session wins; otherwise the most recent one. */
+    /** The app picked on the dashboard if it still has a session; otherwise the playing one, otherwise the most recent. */
     private fun pick(controllers: List<MediaController>?): MediaController? =
-        controllers?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: controllers?.firstOrNull()
+        controllers?.firstOrNull { it.packageName == preferred }
+            ?: controllers?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: controllers?.firstOrNull()
 
     private fun stopped() = MediaState(MediaState.STATE_STOPPED)
 
@@ -141,6 +167,31 @@ class PhoneMediaSource @Inject constructor(
         )
     }
 
+    /** Switching to another app stops the one that was playing: only one player at a time. */
+    private fun pauseCurrentUnless(pkg: String) {
+        val current = controller ?: return
+        if (current.packageName != pkg && current.playbackState?.state == PlaybackState.STATE_PLAYING) current.transportControls.pause()
+    }
+
+    private val icons = HashMap<String, ByteArray>()
+
+    /** The app's launcher icon as a small PNG (cached); empty if it cannot be drawn. */
+    private fun iconFor(pkg: String): ByteArray = icons.getOrPut(pkg) {
+        runCatching {
+            val size = ICON_PX
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val drawable = context.packageManager.getApplicationIcon(pkg)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(android.graphics.Canvas(bitmap))
+            ByteArrayOutputStream().also { bitmap.compress(CompressFormat.PNG, 100, it) }.toByteArray()
+        }.getOrDefault(ByteArray(0))
+    }
+
+    /** The app's label if it is installed on the phone, otherwise null (so a stale setting is simply not offered). */
+    private fun installedLabel(pkg: String): String? = runCatching {
+        context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrNull()
+
     private fun appLabel(pkg: String): String = runCatching {
         context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(pkg, 0)).toString()
     }.getOrDefault(pkg)
@@ -168,6 +219,20 @@ class PhoneMediaSource @Inject constructor(
     override suspend fun cover(coverId: String): ByteArray? = covers[coverId]
 
     override fun command(cmd: MediaCmd) {
+        when (cmd.cmd) {
+            MediaCmd.LAUNCH -> { launch(cmd.pkg); return }
+            MediaCmd.SELECT -> {
+                pauseCurrentUnless(cmd.pkg)
+                preferred = cmd.pkg.takeIf { it.isNotBlank() }
+                main.post {
+                    reselect?.invoke()
+                    // switching to an app also starts it: the dashboard shows one player at a time
+                    val target = runCatching { manager.getActiveSessions(listener) }.getOrNull()?.firstOrNull { it.packageName == cmd.pkg }
+                    if (target != null && target.playbackState?.state != PlaybackState.STATE_PLAYING) target.transportControls.play()
+                }
+                return
+            }
+        }
         val controls = controller?.transportControls ?: return
         when (cmd.cmd) {
             MediaCmd.PLAY -> controls.play()
@@ -179,7 +244,42 @@ class PhoneMediaSource @Inject constructor(
         }
     }
 
+    /**
+     * Starts playback in [pkg] from the background. A media-button PLAY addressed to that package wakes its media
+     * service without needing a visible activity (starting activities from the background is blocked on recent
+     * Android); the launch intent is a best-effort fallback that only works while the phone app is allowed to.
+     */
+    private fun launch(pkg: String) {
+        if (installedLabel(pkg) == null) return
+        pauseCurrentUnless(pkg)
+        for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+            context.sendBroadcast(
+                Intent(Intent.ACTION_MEDIA_BUTTON).setPackage(pkg).putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(action, KeyEvent.KEYCODE_MEDIA_PLAY)),
+            )
+        }
+        preferred = pkg
+        playWhenReady(pkg, attemptsLeft = START_ATTEMPTS)
+        context.packageManager.getLaunchIntentForPackage(pkg)?.let { runCatching { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+    }
+
+    /**
+     * A cold-started player often shows up with its last track loaded but paused: once its session exists, press play
+     * through it (a single time) so that "open the app" really means "start the music".
+     */
+    private fun playWhenReady(pkg: String, attemptsLeft: Int) {
+        main.postDelayed({
+            val session = runCatching { manager.getActiveSessions(listener) }.getOrNull()?.firstOrNull { it.packageName == pkg }
+            when {
+                session == null && attemptsLeft > 0 -> playWhenReady(pkg, attemptsLeft - 1)
+                session != null && session.playbackState?.state != PlaybackState.STATE_PLAYING -> session.transportControls.play()
+            }
+        }, START_POLL_MS)
+    }
+
     private companion object {
+        const val ICON_PX = 64
+        const val START_ATTEMPTS = 12
+        const val START_POLL_MS = 500L
         const val TAG = "PhoneMediaSource"
         const val COVER_SIZE = 128
         const val MAX_CACHED_COVERS = 8

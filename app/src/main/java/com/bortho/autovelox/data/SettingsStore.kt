@@ -63,6 +63,34 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getString(KEY_PHONE, null)
         set(value) = prefs.edit().putString(KEY_PHONE, value).apply()
 
+    /** Radio: alert settings were edited here and the phone has not received them yet (they win over its snapshot). */
+    var settingsPending: Boolean
+        get() = prefs.getBoolean(KEY_SETTINGS_PENDING, false)
+        set(value) = prefs.edit().putBoolean(KEY_SETTINGS_PENDING, value).apply()
+
+    /** How much the music is lowered while an alert is spoken, in percent (0 = not at all). Local to each device. */
+    var duckPercent: Int
+        get() = prefs.getInt(KEY_DUCK, DEFAULT_DUCK_PERCENT)
+        set(value) = prefs.edit().putInt(KEY_DUCK, value.coerceIn(0, 100)).apply()
+
+    /** Dashboard screen brightness, 0.05..1; negative = leave the system's. */
+    var dashboardBrightness: Float
+        get() = prefs.getFloat(KEY_BRIGHTNESS, -1f)
+        set(value) = prefs.edit().putFloat(KEY_BRIGHTNESS, value).apply()
+
+    private val _mediaApps = MutableStateFlow(readMediaApps())
+
+    /** Phone: packages of the music apps the dashboard offers to open when nothing is playing. */
+    val mediaApps: StateFlow<List<String>> = _mediaApps.asStateFlow()
+
+    fun saveMediaApps(packages: List<String>) {
+        prefs.edit().putString(KEY_MEDIA_APPS, packages.joinToString(",")).apply()
+        _mediaApps.value = packages
+    }
+
+    private fun readMediaApps(): List<String> =
+        prefs.getString(KEY_MEDIA_APPS, null)?.split(',')?.filter { it.isNotBlank() } ?: DEFAULT_MEDIA_APPS
+
     /** Phone navigation mode: which of the views was used last (name of `NavigationVariant`). */
     var navigationView: String?
         get() = prefs.getString(KEY_NAV_VIEW, null)
@@ -73,7 +101,13 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getBoolean(KEY_ADD_HINT, false)
         set(value) = prefs.edit().putBoolean(KEY_ADD_HINT, value).apply()
 
-    private companion object {
+    companion object {
+        const val DEFAULT_DUCK_PERCENT = 60
+        val DEFAULT_MEDIA_APPS = listOf("com.google.android.apps.youtube.music", "com.spotify.music")
+        const val KEY_SETTINGS_PENDING = "settings_pending"
+        const val KEY_DUCK = "duck_percent"
+        const val KEY_BRIGHTNESS = "dashboard_brightness"
+        const val KEY_MEDIA_APPS = "media_apps"
         const val KEY_ADD_HINT = "add_hint_seen"
         const val KEY_NAV_VIEW = "navigation_view"
         const val KEY_MODE = "alert_mode"

@@ -69,6 +69,11 @@ class RoomPhoneStore @Inject constructor(
     override suspend fun blacklist(): List<String> = repository.ignoredIds(session.localKey).toList()
 
     override suspend fun settings(): UserSettings = settings.alertSettings.value
+
+    override suspend fun saveSettings(settings: UserSettings) {
+        this.settings.saveAlertSettings(settings)
+        background.launch { runCatching { sync.pushSettings(settings) } }
+    }
 }
 
 /** Radio side: outbox, versions and dataset swap on Room. */
@@ -124,6 +129,12 @@ class RoomRadioStore @Inject constructor(
 
     override suspend fun saveSettings(settings: UserSettings) {
         this.settings.saveAlertSettings(settings)
+    }
+
+    override suspend fun pendingSettings(): UserSettings? = if (settings.settingsPending) settings.alertSettings.value else null
+
+    override suspend fun markSettingsSent() {
+        settings.settingsPending = false
     }
 
     override suspend fun markDatasetSynced(nowMs: Long) {

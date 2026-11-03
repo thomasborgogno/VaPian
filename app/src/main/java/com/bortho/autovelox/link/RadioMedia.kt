@@ -18,6 +18,11 @@ class RadioMedia @Inject constructor() : MediaListener {
     private val _state = MutableStateFlow<RadioMediaState?>(null)
     val state: StateFlow<RadioMediaState?> = _state.asStateFlow()
 
+    private val _apps = MutableStateFlow<MediaApps?>(null)
+
+    /** Music apps the dashboard can open and the players active on the phone; null before the phone said anything. */
+    val apps: StateFlow<MediaApps?> = _apps.asStateFlow()
+
     private var coverId: String = ""
     private var cover: ByteArray? = null
 
@@ -27,6 +32,10 @@ class RadioMedia @Inject constructor() : MediaListener {
             cover = null // the bytes follow in a COVER message
         }
         _state.value = RadioMediaState(state, System.currentTimeMillis(), cover)
+    }
+
+    override fun onApps(apps: MediaApps) {
+        _apps.value = apps
     }
 
     override fun onCover(coverId: String, jpeg: ByteArray) {
@@ -40,5 +49,6 @@ class RadioMedia @Inject constructor() : MediaListener {
         coverId = ""
         cover = null
         _state.value = null
+        _apps.value = null
     }
 }
