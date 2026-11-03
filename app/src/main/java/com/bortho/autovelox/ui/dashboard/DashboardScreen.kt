@@ -101,6 +101,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
     val media by viewModel.media.collectAsState()
     val mediaApps by viewModel.mediaApps.collectAsState()
     val alertSettings by viewModel.alertSettings.collectAsState()
+    val regions by viewModel.regions.collectAsState()
     var duck by remember { mutableIntStateOf(viewModel.duckPercent) }
     val scope = rememberCoroutineScope()
 
@@ -146,8 +147,10 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                 } else {
                     DashboardSettings(
                         link = link,
+                        phoneName = remember(viewModel.phoneAddress) { viewModel.phoneName() },
                         paired = viewModel.phoneAddress != null,
                         lastSyncAt = lastSync,
+                        regions = regions,
                         settings = alertSettings,
                         onSettings = viewModel::saveAlertSettings,
                         duckPercent = duck,
@@ -209,99 +212,6 @@ private fun TopStrip(speed: Double, limit: Int?, overLimit: Boolean, vehicle: Ve
                 Modifier.size(40.dp),
                 tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             )
-        }
-    }
-}
-
-/** Settings page of the head unit, reached by swiping the dashboard from right to left. Two scrolling columns. */
-@Composable
-private fun DashboardSettings(
-    link: LinkStatus,
-    paired: Boolean,
-    lastSyncAt: Long,
-    settings: UserSettings,
-    onSettings: (UserSettings) -> Unit,
-    duckPercent: Int,
-    onDuck: (Int) -> Unit,
-    onPair: () -> Unit,
-    onDiagnostics: () -> Unit,
-) {
-    val age = DataFreshness.ageDays(lastSyncAt, System.currentTimeMillis())
-    Row(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Impostazioni", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Telefono", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                    Text(linkText(link, paired), fontSize = 20.sp)
-                    Button(onClick = onPair, Modifier.height(64.dp)) { Text(if (paired) "Cambia telefono" else "Scegli telefono", fontSize = 20.sp) }
-                }
-            }
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Dati autovelox", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        when (age) {
-                            null -> "Mai aggiornati"
-                            0 -> "Aggiornati oggi"
-                            1 -> "Aggiornati 1 giorno fa"
-                            else -> "Aggiornati $age giorni fa"
-                        },
-                        fontSize = 20.sp,
-                    )
-                }
-            }
-            Button(onClick = onDiagnostics, Modifier.height(64.dp)) { Text("Diagnostica", fontSize = 20.sp) }
-            Text("Scorri verso destra per tornare alla dashboard.", fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
-        }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Avvisi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Distanza di preavviso", fontSize = 18.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for ((mode, label) in listOf(AlertDistanceMode.FIXED to "Fissa", AlertDistanceMode.DYNAMIC to "Dinamica")) {
-                            FilterChip(
-                                selected = settings.alertDistanceMode == mode,
-                                onClick = { onSettings(settings.copy(alertDistanceMode = mode)) },
-                                label = { Text(label, fontSize = 20.sp, modifier = Modifier.padding(vertical = 10.dp)) },
-                            )
-                        }
-                    }
-                    Text(
-                        if (settings.alertDistanceMode == AlertDistanceMode.FIXED) "Sempre la stessa distanza." else "Cresce con la velocità e quando superi il limite.",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    )
-                    val fixed = settings.alertDistanceMode == AlertDistanceMode.FIXED
-                    Text("Distanza fissa: ${settings.alertDistanceMeters} m", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (fixed) 1f else 0.4f))
-                    Slider(
-                        value = settings.alertDistanceMeters.toFloat(),
-                        onValueChange = { onSettings(settings.copy(alertDistanceMeters = it.roundToInt())) },
-                        valueRange = UserSettings.MIN_ALERT_METERS.toFloat()..UserSettings.MAX_ALERT_METERS.toFloat(),
-                        steps = (UserSettings.MAX_ALERT_METERS - UserSettings.MIN_ALERT_METERS) / 50 - 1,
-                        enabled = fixed,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Tolleranza intelligente", fontSize = 20.sp)
-                            Text(
-                                "Niente avviso sonoro se vai almeno il 10% sotto il limite; scatta subito se acceleri.",
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            )
-                        }
-                        Switch(checked = settings.toleranceFilterEnabled, onCheckedChange = { onSettings(settings.copy(toleranceFilterEnabled = it)) })
-                    }
-                }
-            }
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Musica durante gli avvisi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                    Text("La musica non si ferma: viene solo abbassata del $duckPercent% mentre l'avviso è parlato.", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                    Slider(value = duckPercent.toFloat(), onValueChange = { onDuck((it / 10).roundToInt() * 10) }, valueRange = 0f..100f, steps = 9)
-                }
-            }
         }
     }
 }
@@ -422,14 +332,6 @@ internal fun ActionRow(
         }
     }
     }
-}
-
-private fun linkText(link: LinkStatus, paired: Boolean) = when {
-    !paired -> "Telefono: non scelto"
-    link == LinkStatus.SYNCED -> "Telefono: dati aggiornati"
-    link == LinkStatus.CONNECTED -> "Telefono: connesso"
-    link == LinkStatus.CONNECTING -> "Telefono: connessione…"
-    else -> "Telefono: non connesso"
 }
 
 @Composable

@@ -15,6 +15,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
@@ -57,8 +71,8 @@ import java.util.Date
 import kotlin.math.roundToInt
 
 /**
- * Everything configurable or manageable on the phone, in one place: alerts (on/off, distance, tolerance), the radio
- * (link, background readiness, the player's notification access), the OpenStreetMap data per region, and diagnostics.
+ * Everything configurable or manageable on the phone, grouped in a few compact cards (rows separated by dividers):
+ * accounts (Google, OpenStreetMap), alerts, the radio and its music, the OpenStreetMap data per region, diagnostics.
  */
 @Composable
 fun SettingsScreen(
@@ -80,14 +94,15 @@ fun SettingsScreen(
     val linkEnabled by phoneViewModel.linkEnabled.collectAsState()
     val mediaAccess by phoneViewModel.mediaAccess.collectAsState()
     var othersExpanded by rememberSaveable { mutableStateOf(false) }
+    var appsExpanded by rememberSaveable { mutableStateOf(false) }
     val account by settingsViewModel.account.collectAsState()
     val accountBusy by settingsViewModel.accountBusy.collectAsState()
     val accountMessage by settingsViewModel.accountMessage.collectAsState()
     val activityContext = LocalContext.current
     val osmLinked by settingsViewModel.osmLinked.collectAsState()
+    val osmUsername by settingsViewModel.osmUsername.collectAsState()
     val mediaApps by settingsViewModel.mediaApps.collectAsState()
     var duck by remember { mutableIntStateOf(settingsViewModel.duckPercent) }
-    val osmUsername by settingsViewModel.osmUsername.collectAsState()
 
     // back from the system settings screen: re-read the notification-access permission
     LifecycleResumeEffect(Unit) {
@@ -98,179 +113,167 @@ fun SettingsScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp + bottomClearance),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp + bottomClearance),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         item { Text("Impostazioni", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold) }
 
-        // ---- account ---------------------------------------------------------------------------------------------
+        // ---- accounts: Google and OpenStreetMap in one card ---------------------------------------------------
         item { SectionTitle("Account") }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    when (val a = account) {
-                        is AccountState.Google -> {
-                            Text(a.name ?: "Account Google", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            a.email?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                            OutlinedButton(onClick = { settingsViewModel.signOut(activityContext) }, enabled = !accountBusy) { Text("Esci") }
-                        }
-                        else -> {
-                            Text("Ospite", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(
-                                "Le tue segnalazioni sono legate a questo telefono. Accedendo con Google restano tue anche se cambi telefono.",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Button(onClick = { settingsViewModel.signInWithGoogle(activityContext) }, enabled = !accountBusy) { Text("Accedi con Google") }
+            SettingsCard {
+                when (val a = account) {
+                    is AccountState.Google -> SettingRow(
+                        icon = Icons.Filled.AccountCircle,
+                        title = a.name ?: "Account Google",
+                        subtitle = a.email,
+                    ) {
+                        IconButton(onClick = { settingsViewModel.signOut(activityContext) }, enabled = !accountBusy) {
+                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Esci")
                         }
                     }
-                    accountMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
+                    else -> SettingRow(
+                        icon = Icons.Filled.AccountCircle,
+                        title = "Ospite",
+                        subtitle = "Accedi per ritrovare le segnalazioni su altri telefoni",
+                    ) {
+                        FilledTonalButton(onClick = { settingsViewModel.signInWithGoogle(activityContext) }, enabled = !accountBusy) { Text("Accedi") }
+                    }
                 }
-            }
-        }
-
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("OpenStreetMap", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    if (osmLinked) {
-                        Text(
-                            osmUsername?.let { "Collegato come $it." } ?: "Account collegato.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        OutlinedButton(onClick = { settingsViewModel.osmSignOut() }) { Text("Scollega") }
-                    } else {
-                        Text(
-                            "Collega il tuo account OpenStreetMap per pubblicare i nuovi autovelox sulla mappa pubblica. " +
-                                "Le modifiche sono visibili a tutti, quindi ogni pubblicazione chiede conferma.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Button(onClick = { settingsViewModel.osmSignIn() }) { Text("Collega OpenStreetMap") }
+                accountMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                HorizontalDivider()
+                if (osmLinked) {
+                    SettingRow(
+                        icon = Icons.Filled.Public,
+                        title = "OpenStreetMap",
+                        subtitle = osmUsername?.let { "Collegato come $it" } ?: "Account collegato",
+                    ) {
+                        IconButton(onClick = { settingsViewModel.osmSignOut() }) { Icon(Icons.Filled.LinkOff, contentDescription = "Scollega") }
+                    }
+                } else {
+                    SettingRow(
+                        icon = Icons.Filled.Public,
+                        title = "OpenStreetMap",
+                        subtitle = "Per pubblicare autovelox sulla mappa pubblica",
+                    ) {
+                        FilledTonalButton(onClick = { settingsViewModel.osmSignIn() }) { Text("Collega") }
                     }
                 }
             }
         }
 
-        // ---- alerts -------------------------------------------------------------------------------------------
+        // ---- alerts ---------------------------------------------------------------------------------------------
         item { SectionTitle("Avvisi") }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SwitchRow(
-                        title = "Avvisi autovelox",
-                        description = if (running) "Attivi: avvisa mentre guidi." else "Spenti.",
-                        checked = running,
-                        onCheckedChange = onGuidanceToggle,
-                    )
-                    Text("Distanza di preavviso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                    ModeOption(
-                        selected = settings.alertDistanceMode == AlertDistanceMode.FIXED,
-                        title = "Fissa",
-                        description = "Sempre la stessa distanza.",
-                        onClick = { settingsViewModel.setMode(AlertDistanceMode.FIXED) },
-                    )
-                    ModeOption(
-                        selected = settings.alertDistanceMode == AlertDistanceMode.DYNAMIC,
-                        title = "Dinamica",
-                        description = "Cresce con la velocità e quando superi il limite.",
-                        onClick = { settingsViewModel.setMode(AlertDistanceMode.DYNAMIC) },
-                    )
-                    if (settings.alertDistanceMode == AlertDistanceMode.FIXED) {
-                        Text("${settings.alertDistanceMeters} metri")
-                        Slider(
-                            value = settings.alertDistanceMeters.toFloat(),
-                            onValueChange = { settingsViewModel.setMeters((it / 50f).roundToInt() * 50) },
-                            valueRange = UserSettings.MIN_ALERT_METERS.toFloat()..UserSettings.MAX_ALERT_METERS.toFloat(),
-                        )
+            SettingsCard {
+                SwitchRow(
+                    title = "Avvisi autovelox",
+                    description = if (running) "Attivi: avvisa mentre guidi" else "Spenti",
+                    checked = running,
+                    onCheckedChange = onGuidanceToggle,
+                )
+                HorizontalDivider()
+                Text("Distanza di preavviso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                val modes = listOf(AlertDistanceMode.FIXED to "Fissa", AlertDistanceMode.DYNAMIC to "Dinamica")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    modes.forEachIndexed { index, (mode, label) ->
+                        SegmentedButton(
+                            selected = settings.alertDistanceMode == mode,
+                            onClick = { settingsViewModel.setMode(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                        ) { Text(label) }
                     }
-                    SwitchRow(
-                        title = "Tolleranza intelligente",
-                        description = "Niente avviso sonoro se vai almeno il 10% sotto il limite; scatta subito se acceleri.",
-                        checked = settings.toleranceFilterEnabled,
-                        onCheckedChange = settingsViewModel::setTolerance,
-                    )
                 }
+                if (settings.alertDistanceMode == AlertDistanceMode.FIXED) {
+                    ValueSlider(
+                        label = "Distanza",
+                        value = "${settings.alertDistanceMeters} m",
+                        slider = {
+                            Slider(
+                                value = settings.alertDistanceMeters.toFloat(),
+                                onValueChange = { settingsViewModel.setMeters((it / 50f).roundToInt() * 50) },
+                                valueRange = UserSettings.MIN_ALERT_METERS.toFloat()..UserSettings.MAX_ALERT_METERS.toFloat(),
+                            )
+                        },
+                    )
+                } else {
+                    Text("Cresce con la velocità e quando superi il limite", style = MaterialTheme.typography.bodySmall)
+                }
+                HorizontalDivider()
+                SwitchRow(
+                    title = "Tolleranza intelligente",
+                    description = "Nessun avviso sonoro se vai almeno il 10% sotto il limite",
+                    checked = settings.toleranceFilterEnabled,
+                    onCheckedChange = settingsViewModel::setTolerance,
+                )
             }
         }
 
-        // ---- radio --------------------------------------------------------------------------------------------
+        // ---- the radio: link, background readiness, music ---------------------------------------------------------
         item { SectionTitle("Autoradio") }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        when (link) {
-                            LinkStatus.CONNECTED, LinkStatus.SYNCED -> "Collegata"
-                            LinkStatus.WAITING -> "In attesa dell'autoradio"
-                            else -> "Bluetooth non attivo"
-                        },
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                    )
-                    Text("L'autoradio riceve da qui le regioni scaricate, le impostazioni e la musica.", style = MaterialTheme.typography.bodySmall)
-                    SwitchRow(
-                        title = "Sempre pronto in background",
-                        description = "Resta in ascolto anche con l'app chiusa (mostra una notifica discreta).",
-                        checked = linkEnabled,
-                        onCheckedChange = {
-                            phoneViewModel.setLinkEnabled(it)
-                            onLinkToggle(it)
-                        },
-                    )
-                    if (mediaAccess) {
-                        Text("Musica: il display dell'autoradio mostra e controlla il player del telefono.", style = MaterialTheme.typography.bodyMedium)
-                    } else {
-                        Text(
-                            "Musica: per mostrare il brano in riproduzione serve l'accesso alle notifiche (solo per leggere il player).",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Button(onClick = onOpenNotificationAccess) { Text("Concedi accesso") }
+            SettingsCard {
+                SettingRow(
+                    icon = Icons.Filled.Bluetooth,
+                    title = when (link) {
+                        LinkStatus.CONNECTED, LinkStatus.SYNCED -> "Collegata"
+                        LinkStatus.WAITING -> "In attesa dell'autoradio"
+                        else -> "Bluetooth non attivo"
+                    },
+                    subtitle = "Riceve da qui regioni, impostazioni e musica",
+                )
+                HorizontalDivider()
+                SwitchRow(
+                    title = "Sempre pronto in background",
+                    description = "Resta in ascolto con l'app chiusa",
+                    checked = linkEnabled,
+                    onCheckedChange = {
+                        phoneViewModel.setLinkEnabled(it)
+                        onLinkToggle(it)
+                    },
+                )
+                // only shown while something is missing: once access is granted there is nothing to say
+                if (!mediaAccess) {
+                    HorizontalDivider()
+                    SettingRow(icon = Icons.Filled.MusicNote, title = "Accesso alle notifiche", subtitle = "Serve per leggere il brano in riproduzione") {
+                        FilledTonalButton(onClick = onOpenNotificationAccess) { Text("Concedi") }
                     }
                 }
             }
         }
 
-        // ---- OpenStreetMap data -----------------------------------------------------------------------------
-        // ---- music -------------------------------------------------------------------------------------------
         item { SectionTitle("Musica") }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("App da proporre sull'autoradio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Quando non c'è musica in riproduzione, l'autoradio mostra questi pulsanti per avviarla sul telefono.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    val installed = remember { settingsViewModel.installedMusicApps() }
-                    if (installed.isEmpty()) Text("Nessuna app musicale trovata sul telefono.", style = MaterialTheme.typography.bodyMedium)
-                    for (app in installed) {
-                        Row(
-                            Modifier.fillMaxWidth().clickable { settingsViewModel.toggleMediaApp(app.pkg) },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(checked = app.pkg in mediaApps, onCheckedChange = { settingsViewModel.toggleMediaApp(app.pkg) })
-                            Text(app.label)
-                        }
-                    }
+            SettingsCard {
+                Text("App da proporre sull'autoradio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Compaiono quando non c'è musica in riproduzione", style = MaterialTheme.typography.bodySmall)
+                val installed = remember { settingsViewModel.installedMusicApps() }
+                val chosen = installed.filter { it.pkg in mediaApps }
+                val others = installed.filter { it.pkg !in mediaApps }
+                if (installed.isEmpty()) Text("Nessuna app musicale trovata sul telefono", style = MaterialTheme.typography.bodyMedium)
+                if (chosen.isEmpty() && installed.isNotEmpty()) Text("Nessuna app selezionata", style = MaterialTheme.typography.bodyMedium)
+                for (app in chosen) AppCheckRow(app.label, checked = true) { settingsViewModel.toggleMediaApp(app.pkg) }
+                if (others.isNotEmpty()) {
+                    InlineAccordion("Altre app", others.size, appsExpanded) { appsExpanded = !appsExpanded }
+                    if (appsExpanded) for (app in others) AppCheckRow(app.label, checked = false) { settingsViewModel.toggleMediaApp(app.pkg) }
                 }
-            }
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Musica durante gli avvisi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        "La musica non si ferma: viene solo abbassata del $duck% mentre l'avviso è parlato.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Slider(
-                        value = duck.toFloat(),
-                        onValueChange = { duck = (it / 10).roundToInt() * 10; settingsViewModel.duckPercent = duck },
-                        valueRange = 0f..100f,
-                        steps = 9,
-                    )
-                }
+                HorizontalDivider()
+                ValueSlider(
+                    label = "Musica abbassata durante gli avvisi",
+                    value = "$duck%",
+                    slider = {
+                        Slider(
+                            value = duck.toFloat(),
+                            onValueChange = { duck = (it / 10).roundToInt() * 10; settingsViewModel.duckPercent = duck },
+                            valueRange = 0f..100f,
+                            steps = 9,
+                        )
+                    },
+                )
             }
         }
 
+        // ---- OpenStreetMap data, per region ------------------------------------------------------------------------
         item { SectionTitle("Dati autovelox") }
         if (DataFreshness.needsRefresh(lastOsm, System.currentTimeMillis())) {
             item {
@@ -278,7 +281,8 @@ fun SettingsScreen(
                     Text(
                         if (lastOsm == 0L) "Nessun dato scaricato: scarica le regioni che ti servono."
                         else "I dati degli autovelox potrebbero non essere aggiornati. Scaricali di nuovo da OpenStreetMap.",
-                        Modifier.padding(16.dp),
+                        Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }
@@ -298,7 +302,7 @@ fun SettingsScreen(
         val others = ItalianRegions.filter { it !in downloadedNames }
 
         if (downloaded.isEmpty()) {
-            item { Text("Nessuna regione scaricata.", style = MaterialTheme.typography.bodyMedium) }
+            item { Text("Nessuna regione scaricata", style = MaterialTheme.typography.bodyMedium) }
         } else {
             items(downloaded, key = { it }) { region ->
                 RegionRow(region, regions.firstOrNull { it.region == region }, region in downloading) { phoneViewModel.download(region) }
@@ -319,6 +323,57 @@ fun SettingsScreen(
         }
 
         item { TextButton(onClick = onOpenDiagnostics) { Text("Diagnostica") } }
+    }
+}
+
+/** A card whose rows are stacked tightly; separate groups of rows with a [HorizontalDivider]. */
+@Composable
+private fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    }
+}
+
+/** Icon, title and subtitle on the left, an optional action (button or icon button) on the right. */
+@Composable
+private fun SettingRow(icon: ImageVector, title: String, subtitle: String?, trailing: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+        trailing?.invoke()
+    }
+}
+
+/** A label with its current value on one line, and the slider right below. */
+@Composable
+private fun ValueSlider(label: String, value: String, slider: @Composable () -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        }
+        slider()
+    }
+}
+
+@Composable
+private fun AppCheckRow(label: String, checked: Boolean, onToggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        Text(label)
+    }
+}
+
+/** A collapsible group inside a card: title, how many entries it hides, and a chevron that turns when it opens. */
+@Composable
+private fun InlineAccordion(title: String, count: Int, expanded: Boolean, onToggle: () -> Unit) {
+    val turn by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
+    Row(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("$title ($count)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.ExpandMore, contentDescription = if (expanded) "Comprimi" else "Espandi", modifier = Modifier.rotate(turn))
     }
 }
 
@@ -346,7 +401,7 @@ private fun RegionRow(region: String, meta: com.bortho.autovelox.data.local.Data
 private fun AccordionHeader(title: String, count: Int, expanded: Boolean, onToggle: () -> Unit) {
     val turn by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
     Card(Modifier.fillMaxWidth().clickable(onClick = onToggle), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("$title ($count)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Icon(Icons.Filled.ExpandMore, contentDescription = if (expanded) "Comprimi" else "Espandi", modifier = Modifier.rotate(turn))
         }
@@ -355,7 +410,7 @@ private fun AccordionHeader(title: String, count: Int, expanded: Boolean, onTogg
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
@@ -366,19 +421,5 @@ private fun SwitchRow(title: String, description: String, checked: Boolean, onCh
             Text(description, style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun ModeOption(selected: Boolean, title: String, description: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = null)
-        Column(Modifier.padding(start = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(description, style = MaterialTheme.typography.bodySmall)
-        }
     }
 }

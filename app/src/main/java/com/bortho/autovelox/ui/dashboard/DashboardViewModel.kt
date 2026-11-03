@@ -1,6 +1,14 @@
 package com.bortho.autovelox.ui.dashboard
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import androidx.lifecycle.ViewModel
+import com.bortho.autovelox.data.local.DatasetMetaEntity
+import com.bortho.autovelox.data.local.VaPianDatabase
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import androidx.lifecycle.viewModelScope
 import com.bortho.autovelox.core.model.UserSettings
 import com.bortho.autovelox.link.MediaApps
@@ -23,6 +31,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
+    db: VaPianDatabase,
     private val guidance: GuidanceController,
     vehicle: VehicleSignals,
     private val radioLink: RadioLinkClient,
@@ -55,6 +65,19 @@ class DashboardViewModel @Inject constructor(
         set(value) { settings.dashboardBrightness = value }
 
     val lastDatasetSyncAt: Long get() = settings.lastDatasetSyncAt
+
+    /** Regions of speed cameras held on this device, with how many each. */
+    val regions: StateFlow<List<DatasetMetaEntity>> =
+        db.datasetMeta().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Bluetooth name of the chosen phone, or null if none is chosen (or the name cannot be read). */
+    @SuppressLint("MissingPermission")
+    fun phoneName(): String? {
+        val address = settings.phoneAddress ?: return null
+        return runCatching {
+            (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.getRemoteDevice(address)?.name
+        }.getOrNull()
+    }
     val phoneAddress: String? get() = settings.phoneAddress
 
     fun choosePhone(address: String) {
