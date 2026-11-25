@@ -1,6 +1,5 @@
 package com.bortho.autovelox.core.guidance
 
-import com.bortho.autovelox.core.model.CameraStatus
 import com.bortho.autovelox.core.model.SpeedCamera
 import com.bortho.autovelox.core.model.UserSettings
 
@@ -31,8 +30,9 @@ data class GuidanceState(
  *
  * - The GPS bearing is meaningless when (almost) stopped, so below
  *   [MIN_HEADING_SPEED_KMH] the last reliable heading is kept.
- * - Only `approved` cameras ahead in the direction of travel, not blacklisted and not
- *   ignored for this drive, are considered; the nearest one wins.
+ * - Cameras ahead in the direction of travel, not blacklisted and not ignored for this
+ *   drive, are considered, approved or still pending (a reported camera warns at once,
+ *   without waiting for its confirmation); the nearest one wins.
  * - Audio is spoken once per approach and muted by the tolerance filter while the
  *   driver is comfortably under the limit, re-enabled the moment they speed up.
  */
@@ -63,8 +63,7 @@ class GuidanceEngine {
 
         val candidate = cameras
             .filter {
-                it.status == CameraStatus.APPROVED &&
-                    it.id !in ignoredIds &&
+                it.id !in ignoredIds &&
                     it.id !in sessionIgnored &&
                     Proximity.isAheadInTravelDirection(fix.lat, fix.lng, heading, it)
             }

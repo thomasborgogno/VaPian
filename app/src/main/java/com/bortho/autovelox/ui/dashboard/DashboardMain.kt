@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -61,13 +62,23 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
     val flow = rememberReportFlow(viewModel::report, viewModel::undo, viewModel::commitReport)
     val phoneConnected = link == LinkStatus.CONNECTED || link == LinkStatus.SYNCED
     val coverBackground by viewModel.coverBackground.collectAsState()
+    val lastMediaApp by viewModel.lastMediaApp.collectAsState()
 
     // 0 = calm, 1 = a camera is approaching; held a little after the camera passes so the layout does not flicker
     val alert = rememberHeld(guidance.camera != null, holdMs = 1_800)
-    // a tap on the background of a card makes it the big one, with no camera involved: tap the radar card to bring the
-    // cards back. An alert always wins: while a camera approaches the radar card is big whatever was chosen.
-    var radarChosen by remember { mutableStateOf(false) }
-    val layoutProgress by animateFloatAsState(if (alert || radarChosen) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "layoutProgress")
+    // Which card is the big one. On its own: the radar during an alert or with no music playing (the music card has
+    // nothing to show but the car), the music otherwise. A tap on either card (outside its lower part) swaps them,
+    // always; the choice holds until the situation changes (an alert starts or ends, music starts or stops).
+    val musicPlaying = media?.media?.isPlaying == true
+    // a pause between tracks is not "no music": only after a few seconds without playback
+    val noMusic = !rememberHeld(musicPlaying, holdMs = 4_000)
+    val autoRadarBig = alert || noMusic
+    var manualRadarBig by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(autoRadarBig) { manualRadarBig = null }
+    val radarBig = manualRadarBig ?: autoRadarBig
+    val swapCards = { manualRadarBig = !radarBig }
+    val layoutProgress by animateFloatAsState(if (radarBig) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "layoutProgress")
+    var showBrightness by remember { mutableStateOf(false) }
     SideEffect { onLayoutProgress(layoutProgress) } // the bars under the cards follow the same widths
     val alertLevel by animateFloatAsState(if (alert) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "alertLevel")
 
@@ -75,6 +86,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
         val context = LocalContext.current
         LeftRail(
             onOpenSettings = onOpenSettings,
+            onBrightness = { showBrightness = true },
             // the assistant is the phone's, reached over the hands-free link: offered once a phone is chosen
             showAssistant = viewModel.phoneAddress != null,
             onAssistant = {
@@ -92,7 +104,7 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
             RadarCard(
                 progress = layoutProgress,
                 alertLevel = alertLevel,
-                onBackgroundTap = { radarChosen = false },
+                onBackgroundTap = swapCards,
                 speed = guidance.speedKmh,
                 overLimit = guidance.overLimit,
                 camera = guidance.camera,
@@ -115,11 +127,14 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
                 onLaunch = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.LAUNCH, pkg = pkg) } },
                 onSelect = { pkg -> scope.launch { viewModel.mediaCommand(MediaCmd.SELECT, pkg = pkg) } },
                 coverBackground = coverBackground,
-                onBackgroundTap = { radarChosen = true },
+                onBackgroundTap = swapCards,
+                lastApp = lastMediaApp,
                 modifier = Modifier.weight(lerp(2f, 1f, layoutProgress)).fillMaxHeight(),
             )
         }
     }
+
+    if (showBrightness) BrightnessDialog(viewModel) { showBrightness = false }
 }
 
 /** True while [active], and for [holdMs] after it stops. */
@@ -139,11 +154,12 @@ internal fun rememberHeld(active: Boolean, holdMs: Long): Boolean {
 
 /** The black strip on the left: shortcuts to the assistant and to the settings, room for more apps later. */
 @Composable
-private fun LeftRail(onOpenSettings: () -> Unit, showAssistant: Boolean, onAssistant: () -> Unit) {
+private fun LeftRail(onOpenSettings: () -> Unit, onBrightness: () -> Unit, showAssistant: Boolean, onAssistant: () -> Unit) {
     Column(Modifier.width(60.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
         if (showAssistant) {
             RailButton(Icons.Outlined.Mic, "Assistente del telefono", onClick = onAssistant)
         }
+        RailButton(Icons.Outlined.LightMode, "Luminosità", onBrightness)
         RailButton(Icons.Outlined.Settings, "Impostazioni", onOpenSettings)
     }
 }

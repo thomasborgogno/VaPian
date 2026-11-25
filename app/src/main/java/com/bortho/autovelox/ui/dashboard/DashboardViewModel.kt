@@ -27,6 +27,7 @@ import com.bortho.autovelox.link.RadioMedia
 import com.bortho.autovelox.link.RadioMediaState
 import com.bortho.autovelox.vehicle.VehicleSignals
 import com.bortho.autovelox.vehicle.VehicleState
+import com.bortho.autovelox.display.BrightnessController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -41,10 +42,11 @@ class DashboardViewModel @Inject constructor(
     radioMedia: RadioMedia,
     private val settings: SettingsStore,
     private val voiceAssistant: VoiceAssistant,
+    val brightness: BrightnessController,
 ) : ViewModel() {
     val guidanceState: StateFlow<GuidanceState> = guidance.state
     val fix: StateFlow<LocationFix?> = guidance.fix
-    val nearby: StateFlow<List<SpeedCamera>> = guidance.nearby
+    val nearby: StateFlow<List<SpeedCamera>> = guidance.radarCameras
     val vehicle: StateFlow<VehicleState> = vehicle.state
     val linkStatus: StateFlow<LinkStatus> = radioLink.status
     val media: StateFlow<RadioMediaState?> = radioMedia.state
@@ -73,9 +75,34 @@ class DashboardViewModel @Inject constructor(
         _coverBackground.value = value
     }
 
-    var brightness: Float
-        get() = settings.dashboardBrightness
-        set(value) { settings.dashboardBrightness = value }
+    /** Volume of the spoken alerts, 0..1 (negative = never set: the alarm volume is left alone). */
+    var alertVolume: Float
+        get() = settings.alertVolume
+        set(value) { settings.alertVolume = value }
+
+    /** Speaks a sample alert at [volume]. */
+    fun testAlert(volume: Float) = guidance.testAlert(volume)
+
+    private val _lastMediaApp = kotlinx.coroutines.flow.MutableStateFlow(settings.lastMediaApp)
+
+    /** The last music app the phone played (package, name, icon): offered with a small play button when nothing plays. */
+    val lastMediaApp: StateFlow<Triple<String, String, ByteArray>?> = _lastMediaApp
+
+    init {
+        // remember the player in use, so it can still be shown (and restarted) when nothing plays or the phone is away
+        viewModelScope.launch {
+            radioMedia.apps.collect { apps ->
+                val session = apps?.sessions?.let { list -> list.firstOrNull { it.selected } ?: list.firstOrNull { it.playing } } ?: return@collect
+                val last = _lastMediaApp.value
+                val icon = session.icon.takeIf { it.isNotEmpty() } ?: last?.third?.takeIf { last.first == session.pkg } ?: ByteArray(0)
+                if (last == null || last.first != session.pkg || last.second != session.label || !last.third.contentEquals(icon)) {
+                    val next = Triple(session.pkg, session.label, icon)
+                    settings.lastMediaApp = next
+                    _lastMediaApp.value = next
+                }
+            }
+        }
+    }
 
     val lastDatasetSyncAt: Long get() = settings.lastDatasetSyncAt
 

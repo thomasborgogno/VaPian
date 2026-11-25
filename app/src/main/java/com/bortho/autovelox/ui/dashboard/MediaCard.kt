@@ -12,11 +12,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -75,7 +78,7 @@ import kotlin.math.min
  *   the card and, under it, the buttons (play/pause big, then previous and next);
  * - **narrow** (while an alert takes room): the same elements stacked in a column, the cover on top.
  * The layout is computed from the card's real size for both arrangements and blended by how narrow the card is.
- * With nothing playing it offers the music apps chosen on the phone instead.
+ * With nothing playing it shows the car in 3D, with the last player used at the top left and a small button to start it.
  */
 @Composable
 fun MediaCard(
@@ -90,19 +93,25 @@ fun MediaCard(
     onSelect: (String) -> Unit = {},
     /** Use the blurred cover as the card's background. */
     coverBackground: Boolean = true,
-    /** A tap on the card outside its buttons, bar and app switcher. */
+    /** A tap on the upper part of the card, outside the app switcher (the lower part holds the controls). */
     onBackgroundTap: () -> Unit = {},
+    /** The last player seen (package, name, icon), offered when nothing plays. */
+    lastApp: Triple<String, String, ByteArray>? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier
             .clip(RoundedCornerShape(36.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBackgroundTap),
+            // on the card itself, so it sees the taps its content lets through (buttons and bars keep theirs, the car's
+            // drag does not swallow a tap); only the upper half counts, the lower one holds the controls
+            .pointerInput(onBackgroundTap) {
+                detectTapGestures { if (it.y < size.height * 0.5f) onBackgroundTap() }
+            },
     ) {
         val track = media?.media
         if (track == null || track.state == "stopped" && track.title.isBlank()) {
-            NothingPlaying(phoneConnected, apps, onLaunch)
+            NothingPlaying(phoneConnected, apps, lastApp, onLaunch, onSelect)
         } else {
             Playing(media, phoneConnected, onCommand, onSeek, apps, onLaunch, onSelect, coverBackground)
         }
@@ -110,22 +119,60 @@ fun MediaCard(
 }
 
 @Composable
-private fun NothingPlaying(phoneConnected: Boolean, apps: MediaApps?, onLaunch: (String) -> Unit) {
-    val launchers = if (phoneConnected) apps?.launchers.orEmpty() else emptyList()
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("♪", fontSize = 64.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            Text(
-                if (phoneConnected) "Nessuna musica in riproduzione" else "Telefono non collegato",
-                textAlign = TextAlign.Center,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            // start a music app on the phone: the apps are chosen in the phone's settings
-            for (app in launchers) {
-                Button(onClick = { onLaunch(app.pkg) }, Modifier.fillMaxWidth(0.8f).height(64.dp), shape = CircleShape) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Text("  ${app.label}", fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun NothingPlaying(
+    phoneConnected: Boolean,
+    apps: MediaApps?,
+    lastApp: Triple<String, String, ByteArray>?,
+    onLaunch: (String) -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    // the player to offer: the last one used, else the first app chosen on the phone
+    val offered: SessionRef? = lastApp?.let { (pkg, label, icon) -> SessionRef(pkg, label, playing = false, selected = true, icon = icon) }
+        ?: apps?.launchers?.firstOrNull()?.let { SessionRef(it.pkg, it.label, playing = false, selected = true, icon = it.icon) }
+    Box(Modifier.fillMaxSize()) {
+        CarView(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 72.dp, bottom = 12.dp))
+
+        // the player at the top left; a bare play triangle at the top right starts it (only while the phone is connected)
+        Box(Modifier.align(Alignment.TopStart).fillMaxWidth().padding(start = 18.dp, top = 16.dp, end = 12.dp)) {
+            Row(
+                Modifier.align(Alignment.CenterStart).padding(end = 56.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (offered != null) {
+                    AppSwitcher(
+                        current = offered,
+                        fallbackLabel = offered.label,
+                        apps = if (phoneConnected) apps else null,
+                        onSelect = onSelect,
+                        onLaunch = onLaunch,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                if (!phoneConnected || offered == null) {
+                    Text(
+                        if (phoneConnected) "Nessuna musica" else "Telefono non collegato",
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        maxLines = 1,
+                    )
+                }
+            }
+            if (offered != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .then(if (phoneConnected) Modifier.clickable { onLaunch(offered.pkg) } else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Avvia ${offered.label}",
+                        Modifier.size(34.dp),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (phoneConnected) 0.9f else 0.25f),
+                    )
                 }
             }
         }

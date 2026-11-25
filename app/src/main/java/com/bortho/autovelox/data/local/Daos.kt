@@ -91,12 +91,12 @@ abstract class SpeedCameraDao {
     @Query("SELECT * FROM speed_cameras WHERE region = :region AND deleted = 0")
     abstract suspend fun inRegion(region: String): List<SpeedCameraEntity>
 
-    /** Everything users reported that is usable for alerts (approved) — shipped to the radio as a pseudo-region. */
-    @Query("SELECT * FROM speed_cameras WHERE source = 'user' AND status = 'approved' AND deleted = 0")
-    abstract suspend fun approvedUserCameras(): List<SpeedCameraEntity>
-
-    @Query("SELECT MAX(updatedAt) FROM speed_cameras WHERE source = 'user' AND status = 'approved' AND deleted = 0")
-    abstract suspend fun latestApprovedUserUpdate(): Long?
+    /**
+     * Everything users reported, approved or still pending (pending ones alert too) — shipped to the radio as a
+     * pseudo-region.
+     */
+    @Query("SELECT * FROM speed_cameras WHERE source = 'user' AND deleted = 0 ORDER BY id")
+    abstract suspend fun userCameras(): List<SpeedCameraEntity>
 
     /** Reports created on this device and not yet confirmed (radio: waiting for the phone's ack). */
     @Query("SELECT * FROM speed_cameras WHERE source = 'user' AND dirty = 1 AND deleted = 0 AND createdBy = :localKey")

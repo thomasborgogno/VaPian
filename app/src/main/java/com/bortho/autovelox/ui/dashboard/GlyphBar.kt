@@ -28,9 +28,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 
 /**
- * An always-visible monochrome bar: a thin-stroke glyph (dim) and a 4 dp track filled in white. While it is being
- * touched the track grows to 7 dp and the glyph lights up, so you can tell which of the two you are moving without
- * any text. The touch area stays tall (44 dp) so it is still easy to hit in the car. Dragging is consumed, so it
+ * An always-visible monochrome bar: a glyph (dim) and an 8 dp track filled in white. While it is being touched the
+ * track grows to 12 dp and the glyph lights up, so you can tell what you are moving without any text. The touch area is
+ * tall (56 dp) so it is easy to hit in the car; [large] makes everything bigger still (the brightness dialog). Dragging is consumed, so it
  * never turns into a page swipe of the pager that hosts it.
  */
 @Composable
@@ -40,21 +40,30 @@ fun GlyphBar(
     value: Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    large: Boolean = false,
 ) {
     val current by rememberUpdatedState(onValueChange)
     var touched by remember { mutableStateOf(false) }
-    val trackHeight by animateDpAsState(if (touched) 7.dp else 4.dp, label = "trackHeight")
+    val trackHeight by animateDpAsState(
+        when {
+            large && touched -> 18.dp
+            large -> 14.dp
+            touched -> 12.dp
+            else -> 8.dp
+        },
+        label = "trackHeight",
+    )
     val ink = MaterialTheme.colorScheme.onBackground
     val glyph by animateColorAsState(if (touched) ink else ink.copy(alpha = 0.4f), label = "glyph")
     val track = ink.copy(alpha = 0.16f)
 
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Icon(icon, contentDescription, Modifier.size(18.dp), tint = glyph)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (large) 16.dp else 12.dp)) {
+        Icon(icon, contentDescription, Modifier.size(if (large) 34.dp else 26.dp), tint = glyph)
         Canvas(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(if (large) 72.dp else 56.dp)
                 // one gesture handles press, tap and drag, so `touched` stays true for the whole time the finger is down
                 .pointerInput(Unit) {
                     awaitEachGesture {

@@ -85,6 +85,17 @@ class ProximityTest {
     }
 
     @Test
+    fun sideRoadsAndOppositeDirectionsAreLeftOut() {
+        // 40° off the heading: a camera on a side road, no longer "ahead" (the cone was 45°)
+        assertFalse(Proximity.isAheadInTravelDirection(0.0, 0.0, 0.0, camera(0.001, 0.00084)))
+        assertTrue(Proximity.isAheadInTravelDirection(0.0, 0.0, 0.0, camera(0.001, 0.0004)))
+        // a camera watching 60° off our direction does not apply (the tolerance was 70°)
+        assertFalse(Proximity.watchesTravelDirection(0.0, camera(1.0, 0.0, direction = 60)))
+        assertTrue(Proximity.watchesTravelDirection(0.0, camera(1.0, 0.0, direction = 40)))
+        assertTrue(Proximity.watchesTravelDirection(0.0, camera(1.0, 0.0)))
+    }
+
+    @Test
     fun directionReversedFlipsTheMatch() {
         assertTrue(Proximity.isAheadInTravelDirection(0.0, 0.0, 0.0, camera(1.0, 0.0, direction = 180, reversed = true)))
         assertFalse(Proximity.isAheadInTravelDirection(0.0, 0.0, 0.0, camera(1.0, 0.0, direction = 0, reversed = true)))
@@ -126,7 +137,19 @@ class ToleranceAndAlertDistanceTest {
         val fastOver = AlertDistance.meters(dynamic, 120.0, 90)
         assertTrue(fast > slow)
         assertTrue(fastOver > fast)
-        assertEquals(100.0, AlertDistance.meters(dynamic, 0.0, 50), 0.0)
+        assertEquals(150.0, AlertDistance.meters(dynamic, 0.0, 50), 0.0)
+    }
+
+    @Test
+    fun dynamicDistanceGivesTheLeadTimeAsked() {
+        // about 8 s at 50 km/h, 12 s at 90, 15 s at 130
+        assertEquals(8.0, AlertDistance.leadTimeSeconds(50.0), 1e-9)
+        assertEquals(10.0, AlertDistance.leadTimeSeconds(70.0), 1e-9)
+        assertEquals(12.0, AlertDistance.leadTimeSeconds(90.0), 1e-9)
+        assertEquals(15.0, AlertDistance.leadTimeSeconds(160.0), 1e-9)
+        val dynamic = UserSettings(alertDistanceMode = AlertDistanceMode.DYNAMIC)
+        assertEquals(300.0, AlertDistance.meters(dynamic, 90.0, 90), 1e-6)
+        assertEquals(130 / 3.6 * 15, AlertDistance.meters(dynamic, 130.0, 130), 1e-6)
     }
 
     @Test

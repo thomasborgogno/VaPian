@@ -111,7 +111,7 @@ fun NavigationScreen(onExit: () -> Unit, viewModel: NavigationViewModel = hiltVi
     val context = LocalContext.current
     val guidance by viewModel.state.collectAsState()
     val fix by viewModel.fix.collectAsState()
-    val nearby by viewModel.nearby.collectAsState()
+    val nearby by viewModel.radarCameras.collectAsState()
     var variant by remember { mutableStateOf(NavigationVariant.from(viewModel.view)) }
     val hasLocation = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     val compact = LocalConfiguration.current.screenHeightDp < 480

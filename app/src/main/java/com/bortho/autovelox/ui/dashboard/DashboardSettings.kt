@@ -1,5 +1,19 @@
 package com.bortho.autovelox.ui.dashboard
 
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.bortho.autovelox.core.display.BrightnessSchedule
+import com.bortho.autovelox.display.BrightnessController
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -7,6 +21,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -52,6 +67,7 @@ import kotlin.math.roundToInt
  */
 @Composable
 internal fun DashboardSettings(
+    onBack: () -> Unit,
     link: LinkStatus,
     phoneName: String?,
     paired: Boolean,
@@ -65,6 +81,10 @@ internal fun DashboardSettings(
     onCoverBackground: (Boolean) -> Unit,
     onPair: () -> Unit,
     onDiagnostics: () -> Unit,
+    brightness: BrightnessController,
+    alertVolume: Float,
+    onAlertVolume: (Float) -> Unit,
+    onTestAlert: () -> Unit,
 ) {
     val now = System.currentTimeMillis()
     val age = DataFreshness.ageDays(lastSyncAt, now)
@@ -132,7 +152,7 @@ internal fun DashboardSettings(
                     Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(32.dp))
                 }
             }
-            Text("Scorri verso destra per tornare alla dashboard", fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            FilledTonalButton(onClick = onBack, modifier = Modifier.fillMaxWidth().height(64.dp)) { Text("Torna alla dashboard", fontSize = 20.sp) }
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -172,7 +192,25 @@ internal fun DashboardSettings(
                     }
                     Switch(checked = settings.toleranceFilterEnabled, onCheckedChange = { onSettings(settings.copy(toleranceFilterEnabled = it)) })
                 }
+                HorizontalDivider()
+                // the voice uses the alarm stream: its level is set right before speaking, whatever the music volume is
+                ValueSlider("Volume avvisi", if (alertVolume < 0f) "di sistema" else "${(alertVolume * 100).roundToInt()}%", titleSize = 22) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Slider(
+                            value = if (alertVolume < 0f) 0.8f else alertVolume,
+                            onValueChange = { onAlertVolume((it * 20).roundToInt() / 20f) },
+                            onValueChangeFinished = onTestAlert,
+                            valueRange = 0.1f..1f,
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilledTonalButton(onClick = onTestAlert) { Text("Prova", fontSize = 18.sp) }
+                    }
+                }
+                Text("Indipendente dal volume della musica", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
             }
+
+            SectionTitle("Schermo")
+            SettingsCard { BrightnessSettings(brightness) }
 
             SectionTitle("Musica")
             SettingsCard {
@@ -243,4 +281,95 @@ private fun ValueSlider(label: String, value: String, titleSize: Int = 20, slide
         }
         slider()
     }
+}
+
+/** Brightness by time slot: on/off, the start of day and evening, the level of each; and the system permission. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun BrightnessSettings(controller: BrightnessController) {
+    val context = LocalContext.current
+    val window = remember(context) { context.findActivityWindow() }
+    val schedule by controller.schedule.collectAsState()
+    var canWrite by remember { mutableStateOf(controller.canWriteSystem()) }
+    LifecycleResumeEffect(Unit) {
+        canWrite = controller.canWriteSystem()
+        onPauseOrDispose { }
+    }
+    var picking by remember { mutableStateOf<BrightnessSchedule.Slot?>(null) }
+    val save: (BrightnessSchedule) -> Unit = { controller.saveSchedule(it, window) }
+
+    if (!canWrite) {
+        SettingRow(
+            icon = Icons.Outlined.LightMode,
+            title = "Permesso luminosità",
+            subtitle = "Serve per cambiare la luminosità dell'autoradio, non solo dell'app",
+            subtitleColor = VaPianColors.Warning,
+        ) { FilledTonalButton(onClick = { runCatching { context.startActivity(controller.permissionIntent()) } }) { Text("Concedi", fontSize = 18.sp) } }
+        HorizontalDivider()
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text("Luminosità per fascia oraria", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "Giorno e sera con due luminosità; se la cambi durante la guida resta per quella fascia",
+                fontSize = 17.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+        Switch(checked = schedule.enabled, onCheckedChange = { save(schedule.copy(enabled = it)) })
+    }
+    if (schedule.enabled) {
+        for ((slot, label) in listOf(BrightnessSchedule.Slot.DAY to "Giorno", BrightnessSchedule.Slot.EVENING to "Sera")) {
+            val start = if (slot == BrightnessSchedule.Slot.DAY) schedule.dayStartMinute else schedule.eveningStartMinute
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(label, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                FilledTonalButton(onClick = { picking = slot }) { Text("dalle ${hhmm(start)}", fontSize = 18.sp) }
+            }
+            ValueSlider("Luminosità", "${(schedule.levelOf(slot) * 100).roundToInt()}%") {
+                Slider(
+                    value = schedule.levelOf(slot),
+                    onValueChange = { save(schedule.withLevel(slot, it)) },
+                    valueRange = BrightnessSchedule.MIN_LEVEL..1f,
+                )
+            }
+        }
+    } else {
+        ValueSlider("Luminosità", "${(schedule.manual * 100).roundToInt()}%") {
+            Slider(
+                value = schedule.manual,
+                onValueChange = { save(schedule.withLevel(BrightnessSchedule.Slot.MANUAL, it)) },
+                valueRange = BrightnessSchedule.MIN_LEVEL..1f,
+            )
+        }
+    }
+
+    picking?.let { slot ->
+        val start = if (slot == BrightnessSchedule.Slot.DAY) schedule.dayStartMinute else schedule.eveningStartMinute
+        val state = rememberTimePickerState(initialHour = start / 60, initialMinute = start % 60, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { picking = null },
+            title = { Text(if (slot == BrightnessSchedule.Slot.DAY) "Inizio del giorno" else "Inizio della sera") },
+            text = { TimePicker(state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val minute = state.hour * 60 + state.minute
+                    save(if (slot == BrightnessSchedule.Slot.DAY) schedule.copy(dayStartMinute = minute) else schedule.copy(eveningStartMinute = minute))
+                    picking = null
+                }) { Text("OK", fontSize = 18.sp) }
+            },
+            dismissButton = { TextButton(onClick = { picking = null }) { Text("Annulla", fontSize = 18.sp) } },
+        )
+    }
+}
+
+private fun hhmm(minute: Int) = "%02d:%02d".format(minute / 60, minute % 60)
+
+private fun android.content.Context.findActivityWindow(): android.view.Window? {
+    var c = this
+    while (c is android.content.ContextWrapper) {
+        if (c is android.app.Activity) return c.window
+        c = c.baseContext
+    }
+    return null
 }

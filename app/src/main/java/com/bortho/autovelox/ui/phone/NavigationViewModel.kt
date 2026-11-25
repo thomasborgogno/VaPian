@@ -19,6 +19,7 @@ class NavigationViewModel @Inject constructor(
     val state: StateFlow<GuidanceState> = guidance.state
     val fix: StateFlow<LocationFix?> = guidance.fix
     val nearby: StateFlow<List<SpeedCamera>> = guidance.nearby
+    val radarCameras: StateFlow<List<SpeedCamera>> = guidance.radarCameras
     val running: StateFlow<Boolean> = guidance.running
 
     var view: String?

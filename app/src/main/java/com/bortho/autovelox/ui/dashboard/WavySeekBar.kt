@@ -53,7 +53,7 @@ fun WavySeekBar(
     val ink = MaterialTheme.colorScheme.onSurface
     val track = ink.copy(alpha = 0.16f)
     var touched by remember { mutableStateOf(false) }
-    val strokeWidth by animateDpAsState(if (touched) 7.dp else 4.dp, label = "seekStroke")
+    val strokeWidth by animateDpAsState(if (touched) 11.dp else 7.dp, label = "seekStroke")
 
     // the wave travels forever; its height eases in and out with play / pause
     val phase by rememberInfiniteTransition(label = "wave").animateFloat(
@@ -89,8 +89,8 @@ fun WavySeekBar(
     ) {
         val stroke = strokeWidth.toPx()
         val wavelength = 36.dp.toPx()
-        val amplitudePx = 3.dp.toPx() * amplitude
-        val gap = 6.dp.toPx()
+        val amplitudePx = 4.dp.toPx() * amplitude
+        val gap = 9.dp.toPx()
         val cy = size.height / 2
         val x = progress * size.width
 

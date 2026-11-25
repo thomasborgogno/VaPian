@@ -49,6 +49,9 @@ interface PhoneStore {
 
     /** Alert settings edited on the radio: stored (and replicated) like an edit made on the phone. */
     suspend fun saveSettings(settings: UserSettings) = Unit
+
+    /** The spoken alert's text, edited only on the phone. */
+    suspend fun alertTemplate(): String? = null
 }
 
 /** What the radio side needs from local storage. */
@@ -63,6 +66,9 @@ interface RadioStore {
     suspend fun applyRegion(name: String, version: Long, cameras: List<SpeedCamera>)
     suspend fun replaceBlacklist(cameraIds: List<String>)
     suspend fun saveSettings(settings: UserSettings)
+
+    /** The spoken alert's text received from the phone. */
+    suspend fun saveAlertTemplate(template: String) = Unit
 
     /** Alert settings edited on the radio and not yet delivered to the phone, or null. They win over the phone's snapshot. */
     suspend fun pendingSettings(): UserSettings? = null
@@ -186,7 +192,7 @@ class PhoneLinkSession(
         send(Messages.encode(MsgType.MANIFEST, Manifest(regions)))
         send(Messages.encode(MsgType.BLACKLIST_SNAPSHOT, BlacklistSnapshot(store.blacklist())))
         val s = store.settings()
-        send(Messages.encode(MsgType.SETTINGS_SNAPSHOT, SettingsSnapshot(s.alertDistanceMode.wire, s.alertDistanceMeters, s.toleranceFilterEnabled)))
+        send(Messages.encode(MsgType.SETTINGS_SNAPSHOT, SettingsSnapshot(s.alertDistanceMode.wire, s.alertDistanceMeters, s.toleranceFilterEnabled, store.alertTemplate())))
     }
 
     private suspend fun sendRegion(name: String) {
@@ -302,6 +308,7 @@ class RadioLinkSession(
                             s.toleranceFilterEnabled,
                         ),
                     )
+                    s.alertTemplate?.let { store.saveAlertTemplate(it) }
                     settingsDone = true
                     maybeComplete()
                 }

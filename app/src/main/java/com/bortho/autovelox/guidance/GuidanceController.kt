@@ -15,6 +15,7 @@ import android.util.Log
 import com.bortho.autovelox.auth.UserSession
 import com.bortho.autovelox.core.geo.Geo
 import com.bortho.autovelox.core.guidance.AlertDistance
+import com.bortho.autovelox.core.guidance.AlertText
 import com.bortho.autovelox.core.guidance.GuidanceEngine
 import com.bortho.autovelox.core.guidance.GuidanceState
 import com.bortho.autovelox.core.guidance.LocationFix
@@ -26,7 +27,12 @@ import com.bortho.autovelox.data.SettingsStore
 import com.bortho.autovelox.vehicle.VehicleSignals
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -62,8 +68,17 @@ class GuidanceController @Inject constructor(
 
     private val _nearby = MutableStateFlow<List<SpeedCamera>>(emptyList())
 
-    /** Cameras around the last query point, for the radar. */
+    /** Cameras around the last query point (the phone's follow map shows them all, like the main map). */
     val nearby: StateFlow<List<SpeedCamera>> = _nearby.asStateFlow()
+
+    /** Ids the radar must not draw: ignored for good, or with "Ignora" during this drive. */
+    private val _hidden = MutableStateFlow<Set<String>>(emptySet())
+    private var sessionIgnored: Set<String> = emptySet()
+
+    /** [nearby] without the ignored cameras: what the radar draws (it also drops the ones watching the other way). */
+    val radarCameras: StateFlow<List<SpeedCamera>> = combine(_nearby, _hidden) { cameras, hidden ->
+        if (hidden.isEmpty()) cameras else cameras.filter { it.id !in hidden }
+    }.stateIn(CoroutineScope(SupervisorJob() + Dispatchers.Default), SharingStarted.Eagerly, emptyList())
 
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
@@ -80,6 +95,9 @@ class GuidanceController @Inject constructor(
 
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+
+    /** Something to say as soon as the voice is ready (the "Prova" button with alerts not running). */
+    private var pendingSample: String? = null
     private var duckedFrom: Int? = null
     private var duckedTo: Int? = null
     private val duckHandler = android.os.Handler(Looper.getMainLooper())
@@ -97,8 +115,13 @@ class GuidanceController @Inject constructor(
         this.scope = scope
         _running.value = true
         engine.reset()
+        sessionIgnored = emptySet()
+        _hidden.value = ignoredIds
         ignoredJob = scope.launch {
-            repository.observeIgnoredIds(session.localKey).collect { ignoredIds = it }
+            repository.observeIgnoredIds(session.localKey).collect {
+                ignoredIds = it
+                _hidden.value = it + sessionIgnored
+            }
         }
         initTts()
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -149,7 +172,7 @@ class GuidanceController @Inject constructor(
 
         val result = engine.onFix(fix, _nearby.value, ignoredIds, settings.alertSettings.value)
         _state.value = result
-        if (result.speak && result.camera != null && result.distanceMeters != null) speak(result.camera, result.distanceMeters)
+        if (result.speak && result.camera != null && result.distanceMeters != null) speak(result.camera, result.distanceMeters, fix.speedKmh)
     }
 
     private fun refreshCamerasIfNeeded(lat: Double, lng: Double) {
@@ -195,6 +218,8 @@ class GuidanceController @Inject constructor(
         val camera = _state.value.camera ?: return
         if (camera.source != CameraSource.OPENSTREETMAP) return
         engine.ignoreForSession(camera.id)
+        sessionIgnored = sessionIgnored + camera.id
+        _hidden.value = ignoredIds + sessionIgnored
         _state.value = _state.value.copy(camera = null, distanceMeters = null, speak = false)
         repository.queueIgnore(session.localKey, camera.id)
         _outboxChanged.tryEmit(Unit)
@@ -203,6 +228,7 @@ class GuidanceController @Inject constructor(
     // --- voice -----------------------------------------------------------
 
     private fun initTts() {
+        if (tts != null) return
         tts = TextToSpeech(context) { status ->
             val engineTts = tts ?: return@TextToSpeech
             if (status == TextToSpeech.SUCCESS) {
@@ -216,16 +242,50 @@ class GuidanceController @Inject constructor(
                     override fun onError(utteranceId: String?) = restoreMusic()
                 })
                 ttsReady = true
+                pendingSample?.let { say(it, "sample") }
+                pendingSample = null
             }
         }
     }
 
-    private fun speak(camera: SpeedCamera, distanceMeters: Double) {
+    private fun speak(camera: SpeedCamera, distanceMeters: Double, speedKmh: Double) {
         if (!ttsReady) return
+        say(AlertText.render(settings.alertTemplate.value, distanceMeters, camera.limit, speedKmh), camera.id)
+    }
+
+    /**
+     * Speaks a sample alert at the alert volume, with the music lowered as in a real one: the "Prova" button of the
+     * settings. [volume] (0..1) is applied first, so the slider can be tried while it is being moved.
+     */
+    fun testAlert(volume: Float? = null) {
+        volume?.let { settings.alertVolume = it }
+        val text = AlertText.render(settings.alertTemplate.value, 300.0, 50, 62.0)
+        if (ttsReady) {
+            say(text, "sample")
+        } else {
+            pendingSample = text
+            if (tts == null) initTts()
+        }
+    }
+
+    private fun say(text: String, id: String) {
+        applyAlertVolume()
         lowerMusic()
-        val distance = if (distanceMeters >= 1000) "${(distanceMeters / 1000).roundToInt()} chilometri" else "${(distanceMeters / 10).roundToInt() * 10} metri"
-        val limit = camera.limit?.let { " Limite $it chilometri orari." } ?: ""
-        tts?.speak("Attenzione: autovelox a $distance.$limit", TextToSpeech.QUEUE_FLUSH, null, camera.id)
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+    }
+
+    /**
+     * The voice uses the alarm stream (see [navigationAttributes]); setting that stream to the chosen level right before
+     * speaking makes the alert volume independent of the music volume and of whatever the alarm volume was left at.
+     */
+    private fun applyAlertVolume() {
+        val level = settings.alertVolume
+        if (level < 0f) return
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        val target = (level * max).roundToInt().coerceIn(1, max)
+        runCatching { audio.setStreamVolume(AudioManager.STREAM_ALARM, target, 0) }
+            .onFailure { Log.w(TAG, "cannot set the alarm volume", it) }
     }
 
     /**

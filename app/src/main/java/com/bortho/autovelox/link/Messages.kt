@@ -106,6 +106,8 @@ data class SettingsSnapshot(
     val alertDistanceMode: String,
     val alertDistanceMeters: Int,
     val toleranceFilterEnabled: Boolean,
+    /** Text of the spoken alert, edited on the phone only: sent phone → radio, ignored the other way. Absent from old builds. */
+    val alertTemplate: String? = null,
 )
 
 /** Playback state of the phone's active media session, as shown on the dashboard. */

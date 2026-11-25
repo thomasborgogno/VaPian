@@ -27,7 +27,16 @@ class SettingsViewModel @Inject constructor(
     private val sync: SyncEngine,
     private val accounts: AccountService,
     private val osm: com.bortho.autovelox.osm.OsmAccount,
+    private val guidance: com.bortho.autovelox.guidance.GuidanceController,
 ) : ViewModel() {
+    /** Text of the spoken alert (placeholders {distanza} {limite} {velocita}); the radio receives it at the next sync. */
+    val alertTemplate: StateFlow<String> = store.alertTemplate
+
+    fun saveAlertTemplate(template: String) = store.saveAlertTemplate(template)
+
+    /** Speaks a sample of the current text on this phone. */
+    fun testAlert() = guidance.testAlert()
+
     val osmLinked: StateFlow<Boolean> = osm.linked
 
     /** Music apps shown on the dashboard when nothing is playing. */

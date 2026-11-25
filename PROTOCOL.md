@@ -106,9 +106,9 @@ Si includono le `approved`; le `pending` altrui non servono (non generano avvisi
    `DATASET_END {name}`.
 5. L'autoradio verifica il CRC32 totale, scrive in `dataset_staging` e **in un'unica transazione** sostituisce le righe
    pulite della regione e aggiorna `dataset_meta`. Se il link cade o il CRC non torna: scarta e ripete da capo la regione.
-6. Poi `BLACKLIST_SNAPSHOT {cameraIds[]}` e `SETTINGS_SNAPSHOT {alertDistanceMode, alertDistanceMeters, toleranceFilterEnabled}`.
+6. Poi `BLACKLIST_SNAPSHOT {cameraIds[]}` e `SETTINGS_SNAPSHOT {alertDistanceMode, alertDistanceMeters, toleranceFilterEnabled, alertTemplate?}` (`alertTemplate`: testo dell'avviso vocale con i segnaposto `{distanza}` `{limite}` `{velocita}`, modificabile solo sul telefono; opzionale, assente nelle build precedenti).
 7. `lastDatasetReceivedAt` si aggiorna solo a sync completo (alimenta il promemoria a 14 giorni). Se una regione arriva corrotta (lunghezza o CRC32 sbagliati), viene scartata, i dati precedenti restano e il sync non risulta completo.
-8. Le segnalazioni dei **singoli utenti** viaggiano come pseudo-regione `_segnalazioni` (tutte le `approved` non OSM).
+8. Le segnalazioni dei **singoli utenti** viaggiano come pseudo-regione `_segnalazioni` (tutte quelle non OSM, `approved` e `pending`: anche le pending avvisano; la versione è il CRC32 del contenuto, così qualunque cambiamento — nuova, cancellata, approvata — viene riscaricato).
 
 Le righe locali dell'autoradio con `dirty=1` (segnalazioni non ancora confermate) **non** vengono toccate dallo swap.
 
@@ -120,7 +120,7 @@ Il player è quello del **telefono**, mostrato e controllato dall'autoradio sul 
 AVRCP della ROM, che resta un'alternativa da valutare). Il telefono lo spinge solo se la radio ha annunciato `media`
 nelle `caps` dell'`HELLO`.
 
-- `SETTINGS_UPDATE` 0x28 (radio → telefono): stesso payload di `SETTINGS_SNAPSHOT`, per le impostazioni di avviso modificate sulla dashboard. Se la radio le ha modificate offline le invia subito dopo `HELLO_ACK`, prima dello snapshot del telefono (quindi non vengono sovrascritte); il telefono le salva e le replica su Firestore. La distanza è limitata a 100–1000 m.
+- `SETTINGS_UPDATE` 0x28 (radio → telefono): stesso payload di `SETTINGS_SNAPSHOT` (senza `alertTemplate`, che la radio non modifica), per le impostazioni di avviso modificate sulla dashboard. Se la radio le ha modificate offline le invia subito dopo `HELLO_ACK`, prima dello snapshot del telefono (quindi non vengono sovrascritte); il telefono le salva e le replica su Firestore. La distanza è limitata a 100–1000 m.
 - `MEDIA_APPS` 0x34 (telefono → radio): `{launchers: [{pkg, label}], sessions: [{pkg, label, playing, selected}]}`. `launchers` sono le app musicali scelte nelle impostazioni del telefono (la dashboard le propone quando non c'è musica); `sessions` i player attivi. Ogni voce porta anche `icon`, un PNG 64×64 dell'icona dell'app (vuoto se non disponibile). La dashboard mostra in alto a sinistra icona e nome dell'app attiva, con un menu a tendina per passare a un'altra app attiva o avviarne una tra quelle proposte.
 - `MEDIA_CMD` ha il campo opzionale `pkg` e due comandi in più: `launch` (avvia l'app sul telefono con un tasto PLAY indirizzato al pacchetto) e `select` (mostra la sessione di quell'app e la avvia se era ferma). In entrambi i casi, se un altro player stava suonando, il telefono lo mette in pausa: un solo player alla volta.
 - `MEDIA_STATE` (telefono → radio, CBOR): `{state: playing|paused|stopped, title, artist, album, durationMs, positionMs, ts, app, coverId}`.

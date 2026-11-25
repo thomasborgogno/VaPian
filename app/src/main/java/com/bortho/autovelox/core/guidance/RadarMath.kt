@@ -25,3 +25,31 @@ object RadarMath {
         return RadarPoint(right, ahead)
     }
 }
+
+/**
+ * The radar's range follows the speed: a close-up view in town, a wider one on fast roads, where cameras come up much
+ * sooner. Two thresholds (hysteresis) so that driving around the switch point does not make the scale pump.
+ */
+object RadarRange {
+    const val NEAR_METERS = 500.0
+    const val FAR_METERS = 1500.0
+    private const val TO_FAR_KMH = 75.0
+    private const val TO_NEAR_KMH = 60.0
+
+    fun next(currentMeters: Double, speedKmh: Double): Double = when {
+        speedKmh >= TO_FAR_KMH -> FAR_METERS
+        speedKmh <= TO_NEAR_KMH -> NEAR_METERS
+        else -> currentMeters
+    }
+}
+
+/** Interpolation between two GPS fixes, so that the radar glides instead of jumping once a second. */
+object PoseLerp {
+    fun lerp(a: Double, b: Double, t: Double): Double = a + (b - a) * t
+
+    /** Along the shortest way round: 350° → 10° goes through 0°, not back through 180°. */
+    fun lerpAngle(a: Double, b: Double, t: Double): Double {
+        val delta = ((b - a) % 360 + 540) % 360 - 180
+        return ((a + delta * t) % 360 + 360) % 360
+    }
+}

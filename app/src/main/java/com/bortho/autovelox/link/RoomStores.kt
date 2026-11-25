@@ -60,15 +60,18 @@ class RoomPhoneStore @Inject constructor(
         val regions = db.datasetMeta().all().map { meta ->
             RegionDataset(meta.region, meta.version, db.cameras().inRegion(meta.region).map { it.toModel() })
         }
-        val user = db.cameras().approvedUserCameras()
+        val user = db.cameras().userCameras().map { it.toModel() }
         if (user.isEmpty()) return regions
-        val version = (db.cameras().latestApprovedUserUpdate() ?: 0L) / 1000
-        return regions + RegionDataset(USER_REGION, version, user.map { it.toModel() })
+        // the content's checksum as version: any change (a new report, a deletion, an approval) makes the radio fetch it again
+        val version = CameraRecords.crc32(CameraRecords.encode(user))
+        return regions + RegionDataset(USER_REGION, version, user)
     }
 
     override suspend fun blacklist(): List<String> = repository.ignoredIds(session.localKey).toList()
 
     override suspend fun settings(): UserSettings = settings.alertSettings.value
+
+    override suspend fun alertTemplate(): String = settings.alertTemplate.value
 
     override suspend fun saveSettings(settings: UserSettings) {
         this.settings.saveAlertSettings(settings)
@@ -129,6 +132,10 @@ class RoomRadioStore @Inject constructor(
 
     override suspend fun saveSettings(settings: UserSettings) {
         this.settings.saveAlertSettings(settings)
+    }
+
+    override suspend fun saveAlertTemplate(template: String) {
+        settings.saveAlertTemplate(template)
     }
 
     override suspend fun pendingSettings(): UserSettings? = if (settings.settingsPending) settings.alertSettings.value else null

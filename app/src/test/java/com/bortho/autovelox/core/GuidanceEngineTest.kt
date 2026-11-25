@@ -58,11 +58,16 @@ class GuidanceEngineTest {
     }
 
     @Test
-    fun ignoresCamerasBehindPendingBlacklistedAndSessionIgnored() {
+    fun pendingCamerasAlertToo() {
+        val pending = cam("pending", 0.002, 0.0, status = CameraStatus.PENDING)
+        assertEquals("pending", GuidanceEngine().onFix(fix(60.0), listOf(pending), emptySet(), settings).camera?.id)
+    }
+
+    @Test
+    fun ignoresCamerasBehindBlacklistedAndSessionIgnored() {
         val engine = GuidanceEngine()
         val behind = cam("behind", -0.002, 0.0)
-        val pending = cam("pending", 0.002, 0.0, status = CameraStatus.PENDING)
-        assertNull(engine.onFix(fix(60.0), listOf(behind, pending), emptySet(), settings).camera)
+        assertNull(engine.onFix(fix(60.0), listOf(behind), emptySet(), settings).camera)
         assertNull(engine.onFix(fix(60.0), listOf(ahead), setOf("ahead"), settings).camera)
         engine.ignoreForSession("ahead")
         assertNull(engine.onFix(fix(60.0), listOf(ahead), emptySet(), settings).camera)

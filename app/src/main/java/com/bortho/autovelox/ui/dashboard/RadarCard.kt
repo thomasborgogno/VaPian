@@ -46,7 +46,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -73,10 +72,10 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * The left card of the dashboard: the car's surroundings. Calm ([progress] 0): time and date at the top left, the speed
- * under them in the middle, the radar below; a tap on the radar reports a camera. With a camera approaching ([progress]
- * 1) the card grows, time and date fade out, the speed moves to the top left and grows, the radar enlarges, and the
- * limit and distance appear at the top right with the actions under the radar. The background takes a warm tint
+ * The left card of the dashboard: the car's surroundings. Time and date at the top left, the radar below; a tap on the
+ * radar reports a camera. The card can grow ([progress] 1) because a camera is approaching or because it was chosen:
+ * the radar enlarges with it. Only an actual alert ([alertLevel]) replaces time and date with the speed, and shows the
+ * limit and distance at the top right with the actions under the radar. The background takes a warm tint
  * (amber, red when over the limit) as the alert grows. Everything is a continuous function of [progress], so the
  * transition is as smooth as the animation driving it.
  */
@@ -101,7 +100,7 @@ internal fun RadarCard(
     modifier: Modifier = Modifier,
     /** The hint under the radar while calm. */
     showHint: Boolean = true,
-    /** Low and wide screens (a phone on its side): time and speed share the top line, the radar gets the height. */
+    /** Low and wide screens (a phone on its side): a smaller clock, the radar gets the height. */
     compact: Boolean = false,
     cornerRadius: androidx.compose.ui.unit.Dp = 36.dp,
     /** Extra controls drawn over the card (the phone's exit / view buttons). */
@@ -127,19 +126,24 @@ internal fun RadarCard(
         }
     }
 
-    Box(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         modifier
             .clip(RoundedCornerShape(cornerRadius))
             .background(background)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBackgroundTap),
     ) {
         val p = progress
+        // a narrow card (the music one is the big one) has the date under the time, so the radar starts a little lower
+        val narrow = !compact && maxWidth < 600.dp
+        // 0 = date beside the time, 1 = date under it: animated, so the date glides to its new place
+        val stack by animateFloatAsState(if (narrow) 1f else 0f, tween(450, easing = FastOutSlowInEasing), label = "dateStack")
+        val calmTop = if (compact) 28.dp else lerp(136.dp, 176.dp, stack)
         // the radar: its top margin leaves room for time/speed when calm; its bottom margin for the buttons
         val bottomRoom = lerp(60.dp, 104.dp, maxOf(p, pendingRoom))
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(top = lerp(if (compact) 28.dp else 196.dp, 72.dp, p), bottom = bottomRoom),
+                .padding(top = lerp(calmTop, lerp(if (compact) 28.dp else lerp(124.dp, 176.dp, stack), 72.dp, alertLevel), p), bottom = bottomRoom),
         ) {
             RadarView(fix, guidance, cameras, pulse = pulse.value, accent = tint.copy(alpha = 1f).let { if (alertLevel > 0.05f) it else MaterialTheme.colorScheme.primary })
         }
@@ -154,34 +158,31 @@ internal fun RadarCard(
                 .pointerInput(flow) { detectTapGestures(onTap = { flow.report() }) },
         )
 
-        // time and date: top left, gone when the alert takes over
-        if (p < 0.98f) {
-            ClockAndDate(Modifier.align(Alignment.TopStart).padding(28.dp).alpha(1f - p))
+        // time and date: top left, always, until an alert gives their place to the speed
+        if (alertLevel < 0.98f) {
+            ClockAndDate(compact, stack, Modifier.align(Alignment.TopStart).padding(28.dp).alpha(1f - alertLevel))
         }
 
-        // speed: centred under the clock when calm, big at the top left during an alert
-        Row(
+        // speed: only during an alert, big at the top left where the clock was
+        if (alertLevel > 0.02f) Row(
             Modifier
-                .align(BiasAlignment(lerp(if (compact) 1f else 0f, -1f, p), -1f))
-                .padding(
-                    top = lerp(if (compact) 22.dp else 92.dp, 22.dp, p),
-                    start = lerp(0.dp, 28.dp, p),
-                    end = lerp(if (compact) 28.dp else 0.dp, 0.dp, p),
-                ),
+                .align(Alignment.TopStart)
+                .padding(top = 22.dp, start = 28.dp)
+                .alpha(alertLevel),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 "${speed.roundToInt()}",
-                fontSize = lerp(84.sp, 124.sp, p),
+                fontSize = lerp(96.sp, 124.sp, p),
                 fontWeight = FontWeight.Bold,
                 color = if (overLimit) VaPianColors.Danger else MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 "km/h",
-                fontSize = lerp(22.sp, 28.sp, p),
+                fontSize = lerp(24.sp, 28.sp, p),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                modifier = Modifier.padding(bottom = lerp(16.dp, 22.dp, p)),
+                modifier = Modifier.padding(bottom = lerp(18.dp, 22.dp, p)),
             )
         }
 
@@ -265,9 +266,12 @@ internal fun RadarCard(
     }
 }
 
-/** Time, and next to it the date: the weekday, then the day and the month below. */
+/**
+ * Time and date. [stack] 0: the date beside the time, the weekday on top and "day month" under it; 1 (a narrow card):
+ * the date on one line under the time. In between every piece is placed part way, so the change is a smooth glide.
+ */
 @Composable
-private fun ClockAndDate(modifier: Modifier = Modifier) {
+private fun ClockAndDate(compact: Boolean, stack: Float, modifier: Modifier = Modifier) {
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -275,20 +279,39 @@ private fun ClockAndDate(modifier: Modifier = Modifier) {
             delay(5_000)
         }
     }
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(now.format(TIME), fontSize = 48.sp, fontWeight = FontWeight.Bold)
-        Column {
-            // weekday on the first line, "day month" below it: "martedì" / "3 novembre"
-            Text(
-                now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ITALIAN),
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "${now.dayOfMonth} ${now.month.getDisplayName(TextStyle.FULL, Locale.ITALIAN)}",
-                fontSize = 22.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-            )
+    val weekday = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ITALIAN)
+    val dayMonth = "${now.dayOfMonth} ${now.month.getDisplayName(TextStyle.FULL, Locale.ITALIAN)}"
+    val dateSize = if (compact) 22.sp else lerp(30.sp, 24.sp, stack)
+    val dim = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+    androidx.compose.ui.layout.Layout(
+        modifier = modifier,
+        content = {
+            Text(now.format(TIME), fontSize = if (compact) 52.sp else 72.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+            Text(weekday, fontSize = dateSize, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+            Text(dayMonth, fontSize = dateSize, color = lerp(dim, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f), stack), maxLines = 1, softWrap = false)
+        },
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0, maxWidth = androidx.compose.ui.unit.Constraints.Infinity)
+        val (time, day, date) = measurables.map { it.measure(loose) }
+        val gap = 22.dp.roundToPx()
+        val space = 8.dp.roundToPx()
+        // beside: a column of two lines centred on the time, to its right
+        val besideX = time.width + gap
+        val besideTop = (time.height - day.height - date.height) / 2
+        // under: one line below the time
+        val underY = time.height
+        // a straight, diagonal glide from one place to the other
+        fun mix(a: Int, b: Int) = (a + (b - a) * stack).roundToInt()
+        val dayX = mix(besideX, 0)
+        val dayY = mix(besideTop, underY)
+        val dateX = mix(besideX, day.width + space)
+        val dateY = mix(besideTop + day.height, underY)
+        val width = maxOf(time.width, dayX + day.width, dateX + date.width).coerceAtMost(constraints.maxWidth)
+        val height = maxOf(time.height, dayY + day.height, dateY + date.height)
+        layout(width, height) {
+            time.place(0, 0)
+            day.place(dayX, dayY)
+            date.place(dateX, dateY)
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.bortho.autovelox.ui.phone
 
+import com.bortho.autovelox.core.guidance.AlertText
 import android.content.Intent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
@@ -207,6 +208,8 @@ fun SettingsScreen(
                     checked = settings.toleranceFilterEnabled,
                     onCheckedChange = settingsViewModel::setTolerance,
                 )
+                HorizontalDivider()
+                AlertTemplateRow(settingsViewModel)
             }
         }
 
@@ -423,4 +426,64 @@ private fun SwitchRow(title: String, description: String, checked: Boolean, onCh
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+/** The spoken alert's text: a preview of how it sounds, and an editor with the placeholders as chips. */
+@Composable
+private fun AlertTemplateRow(viewModel: SettingsViewModel) {
+    val template by viewModel.alertTemplate.collectAsState()
+    var editing by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text("Testo dell'avviso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("“${AlertText.render(template, 300.0, 50, 62.0)}”", style = MaterialTheme.typography.bodySmall)
+        }
+        FilledTonalButton(onClick = { editing = true }) { Text("Modifica") }
+    }
+    if (editing) AlertTemplateDialog(template, onSave = { viewModel.saveAlertTemplate(it); editing = false }, onTest = viewModel::testAlert, onDismiss = { editing = false })
+}
+
+@Composable
+private fun AlertTemplateDialog(initial: String, onSave: (String) -> Unit, onTest: () -> Unit, onDismiss: () -> Unit) {
+    var field by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initial, androidx.compose.ui.text.TextRange(initial.length))) }
+    val text = field.text
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Testo dell'avviso") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = field,
+                    onValueChange = { if (it.text.length <= AlertText.MAX_LENGTH) field = it },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Tocca per inserire nel punto del cursore:", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (placeholder in AlertText.PLACEHOLDERS) {
+                        androidx.compose.material3.AssistChip(
+                            onClick = {
+                                val at = field.selection.min
+                                val end = field.selection.max
+                                val next = field.text.substring(0, at) + placeholder + field.text.substring(end)
+                                if (next.length <= AlertText.MAX_LENGTH) {
+                                    field = androidx.compose.ui.text.input.TextFieldValue(next, androidx.compose.ui.text.TextRange(at + placeholder.length))
+                                }
+                            },
+                            label = { Text(placeholder) },
+                        )
+                    }
+                }
+                Text("Con limite: “${AlertText.render(text, 300.0, 50, 62.0)}”", style = MaterialTheme.typography.bodySmall)
+                Text("Limite sconosciuto: “${AlertText.render(text, 300.0, null, 62.0)}”", style = MaterialTheme.typography.bodySmall)
+                Text("La frase con {limite} viene omessa se il limite non è noto. L'autoradio riceve il testo alla prossima sincronizzazione.", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { field = androidx.compose.ui.text.input.TextFieldValue(AlertText.DEFAULT_TEMPLATE) }) { Text("Predefinito") }
+                    OutlinedButton(onClick = { onSave(text); onTest() }) { Text("Salva e prova") }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onSave(text) }) { Text("Salva") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Annulla") } },
+    )
 }

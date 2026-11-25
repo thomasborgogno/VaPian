@@ -1,6 +1,8 @@
 package com.bortho.autovelox.data
 
 import android.content.Context
+import com.bortho.autovelox.core.display.BrightnessSchedule
+import com.bortho.autovelox.core.guidance.AlertText
 import com.bortho.autovelox.core.model.AlertDistanceMode
 import com.bortho.autovelox.core.model.UserSettings
 import com.bortho.autovelox.core.role.RoleOverride
@@ -73,10 +75,70 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getInt(KEY_DUCK, DEFAULT_DUCK_PERCENT)
         set(value) = prefs.edit().putInt(KEY_DUCK, value.coerceIn(0, 100)).apply()
 
-    /** Dashboard screen brightness, 0.05..1; negative = leave the system's. */
-    var dashboardBrightness: Float
-        get() = prefs.getFloat(KEY_BRIGHTNESS, -1f)
-        set(value) = prefs.edit().putFloat(KEY_BRIGHTNESS, value).apply()
+    private val _brightness = MutableStateFlow(readBrightness())
+
+    /** Dashboard: system brightness by time slot (day / evening), or a single manual level. */
+    val brightnessSchedule: StateFlow<BrightnessSchedule> = _brightness.asStateFlow()
+
+    fun saveBrightnessSchedule(schedule: BrightnessSchedule) {
+        prefs.edit()
+            .putBoolean(KEY_BR_AUTO, schedule.enabled)
+            .putInt(KEY_BR_DAY_START, schedule.dayStartMinute)
+            .putInt(KEY_BR_EVENING_START, schedule.eveningStartMinute)
+            .putFloat(KEY_BR_DAY, schedule.day)
+            .putFloat(KEY_BR_EVENING, schedule.evening)
+            .putFloat(KEY_BRIGHTNESS, schedule.manual)
+            .apply()
+        _brightness.value = schedule
+    }
+
+    private fun readBrightness(): BrightnessSchedule {
+        val d = BrightnessSchedule()
+        return BrightnessSchedule(
+            enabled = prefs.getBoolean(KEY_BR_AUTO, d.enabled),
+            dayStartMinute = prefs.getInt(KEY_BR_DAY_START, d.dayStartMinute),
+            eveningStartMinute = prefs.getInt(KEY_BR_EVENING_START, d.eveningStartMinute),
+            day = prefs.getFloat(KEY_BR_DAY, d.day),
+            evening = prefs.getFloat(KEY_BR_EVENING, d.evening),
+            // the old single "dashboard brightness" becomes the manual level
+            manual = prefs.getFloat(KEY_BRIGHTNESS, -1f).takeIf { it > 0f } ?: d.manual,
+        )
+    }
+
+    /** Volume of the spoken alerts on this device, 0..1 of the alarm stream (set before speaking); negative = untouched. */
+    var alertVolume: Float
+        get() = prefs.getFloat(KEY_ALERT_VOLUME, -1f)
+        set(value) = prefs.edit().putFloat(KEY_ALERT_VOLUME, value).apply()
+
+    private val _alertTemplate = MutableStateFlow(prefs.getString(KEY_ALERT_TEMPLATE, null) ?: AlertText.DEFAULT_TEMPLATE)
+
+    /** Text of the spoken alert with placeholders (edited on the phone, delivered to the radio over the link). */
+    val alertTemplate: StateFlow<String> = _alertTemplate.asStateFlow()
+
+    fun saveAlertTemplate(template: String) {
+        val t = template.ifBlank { AlertText.DEFAULT_TEMPLATE }
+        prefs.edit().putString(KEY_ALERT_TEMPLATE, t).apply()
+        _alertTemplate.value = t
+    }
+
+    /** Radio: the last music app seen playing (package, name, PNG icon), offered when nothing plays. */
+    var lastMediaApp: Triple<String, String, ByteArray>?
+        get() {
+            val pkg = prefs.getString(KEY_LAST_APP_PKG, null) ?: return null
+            val icon = prefs.getString(KEY_LAST_APP_ICON, null)?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }.getOrNull() }
+            return Triple(pkg, prefs.getString(KEY_LAST_APP_LABEL, null) ?: pkg, icon ?: ByteArray(0))
+        }
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove(KEY_LAST_APP_PKG).remove(KEY_LAST_APP_LABEL).remove(KEY_LAST_APP_ICON).apply()
+            } else {
+                prefs.edit()
+                    .putString(KEY_LAST_APP_PKG, value.first)
+                    .putString(KEY_LAST_APP_LABEL, value.second)
+                    .putString(KEY_LAST_APP_ICON, android.util.Base64.encodeToString(value.third, android.util.Base64.NO_WRAP))
+                    .apply()
+            }
+        }
 
     private val _mediaApps = MutableStateFlow(readMediaApps())
 
@@ -112,6 +174,16 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_SETTINGS_PENDING = "settings_pending"
         const val KEY_DUCK = "duck_percent"
         const val KEY_BRIGHTNESS = "dashboard_brightness"
+        const val KEY_BR_AUTO = "brightness_auto"
+        const val KEY_BR_DAY_START = "brightness_day_start"
+        const val KEY_BR_EVENING_START = "brightness_evening_start"
+        const val KEY_BR_DAY = "brightness_day"
+        const val KEY_BR_EVENING = "brightness_evening"
+        const val KEY_ALERT_VOLUME = "alert_volume"
+        const val KEY_ALERT_TEMPLATE = "alert_template"
+        const val KEY_LAST_APP_PKG = "last_media_pkg"
+        const val KEY_LAST_APP_LABEL = "last_media_label"
+        const val KEY_LAST_APP_ICON = "last_media_icon"
         const val KEY_MEDIA_APPS = "media_apps"
         const val KEY_COVER_BG = "cover_background"
         const val KEY_ADD_HINT = "add_hint_seen"

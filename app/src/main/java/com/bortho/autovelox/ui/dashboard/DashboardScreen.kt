@@ -80,6 +80,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bortho.autovelox.core.model.CameraSource
 import com.bortho.autovelox.core.model.SpeedCamera
+import com.bortho.autovelox.core.display.VolumeCurve
 import com.bortho.autovelox.data.DataFreshness
 import com.bortho.autovelox.link.LinkStatus
 import com.bortho.autovelox.link.MediaCmd
@@ -100,7 +101,7 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
     val alertSettings by viewModel.alertSettings.collectAsState()
     val regions by viewModel.regions.collectAsState()
     var duck by remember { mutableIntStateOf(viewModel.duckPercent) }
-    var layoutProgress by remember { mutableFloatStateOf(0f) }
+    var alertVolume by remember { mutableFloatStateOf(viewModel.alertVolume) }
     val coverBackground by viewModel.coverBackground.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -115,11 +116,14 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
         // Page 0: the driving dashboard; page 1 (swipe right to left): settings. Banner and volume stay on both.
         val pager = rememberPagerState(pageCount = { 2 })
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
+            // no swipe between the pages: the settings open from the left rail and close with Back or their own button
+            androidx.activity.compose.BackHandler(enabled = pager.currentPage == 1) { scope.launch { pager.animateScrollToPage(0) } }
+            HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = false) { page ->
                 if (page == 0) {
-                    DashboardMain(viewModel, onOpenSettings = { scope.launch { pager.animateScrollToPage(1) } }, onLayoutProgress = { layoutProgress = it })
+                    DashboardMain(viewModel, onOpenSettings = { scope.launch { pager.animateScrollToPage(1) } })
                 } else {
                     DashboardSettings(
+                        onBack = { scope.launch { pager.animateScrollToPage(0) } },
                         link = link,
                         phoneName = remember(viewModel.phoneAddress) { viewModel.phoneName() },
                         paired = viewModel.phoneAddress != null,
@@ -133,29 +137,20 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                         onCoverBackground = viewModel::setCoverBackground,
                         onPair = { showPairing = true },
                         onDiagnostics = onOpenDiagnostics,
+                        brightness = viewModel.brightness,
+                        alertVolume = alertVolume,
+                        onAlertVolume = { alertVolume = it; viewModel.alertVolume = it },
+                        onTestAlert = { viewModel.testAlert(alertVolume.takeIf { it >= 0f } ?: 0.8f) },
                     )
                 }
             }
         }
-        // thin bars at the bottom. On the driving page each is as wide as the card above it (same weights as the cards, so
-        // they resize together), nudged a little to the left: the icon starts before the card and the bar ends before its
-        // end. On the settings page brightness takes the left half and volume the right half.
+        // the volume bar at the bottom, across the whole width (on the driving page it starts where the cards start)
         val aligned by animateFloatAsState(if (pager.currentPage == 0) 1f else 0f, tween(500), label = "alignedBars")
-        val calmLeft = 1f
-        val calmRight = 2f
-        val alertLeft = 2.2f
-        val alertRight = 1f
-        val cardLeft = androidx.compose.ui.util.lerp(calmLeft, alertLeft, layoutProgress)
-        val cardRight = androidx.compose.ui.util.lerp(calmRight, alertRight, layoutProgress)
-        Row(
-            Modifier.fillMaxWidth().padding(start = lerp(16.dp, 73.dp, aligned), end = lerp(16.dp, 22.dp, aligned)),
-            horizontalArrangement = Arrangement.spacedBy(lerp(32.dp, 14.dp, aligned)),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BrightnessBar(viewModel, Modifier.weight(androidx.compose.ui.util.lerp(1f, cardLeft, aligned)))
-            VolumeBar(Modifier.weight(androidx.compose.ui.util.lerp(1f, cardRight, aligned)))
-        }
+        VolumeBar(Modifier.fillMaxWidth().padding(start = lerp(16.dp, 78.dp, aligned), end = lerp(16.dp, 22.dp, aligned)))
     }
+
+    BrightnessTicker(viewModel)
 
     if (showPairing) PairingDialog(onPick = { viewModel.choosePhone(it); showPairing = false }, onDismiss = { showPairing = false })
 }
@@ -224,42 +219,62 @@ private fun VolumeBar(modifier: Modifier) {
     GlyphBar(
         icon = Icons.AutoMirrored.Outlined.VolumeUp,
         contentDescription = "Volume",
-        value = if (max > 0) volume.toFloat() / max else 0f,
+        // non-linear: most of the bar is for the upper volumes, the ones used in the car
+        value = if (max > 0) VolumeCurve.positionOf(volume.toFloat() / max) else 0f,
         onValueChange = {
-            volume = (it * max).roundToInt()
+            volume = (VolumeCurve.volumeAt(it) * max).roundToInt()
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
         },
         modifier = modifier,
     )
 }
 
-/** Screen brightness of this app's window (no system permission needed); remembered between runs. */
+/** Applies the brightness of the slot in force now, then re-checks the slot every half minute while the dashboard is open. */
 @Composable
-private fun BrightnessBar(viewModel: DashboardViewModel, modifier: Modifier) {
+private fun BrightnessTicker(viewModel: DashboardViewModel) {
     val context = LocalContext.current
-    var brightness by remember {
-        mutableFloatStateOf(
-            viewModel.brightness.takeIf { it >= 0f }
-                ?: (runCatching { Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(128) / 255f),
-        )
-    }
     val window = remember(context) { context.findActivity()?.window }
-    // the window only takes over from the system's (possibly automatic) brightness once a value was chosen
-    var chosen by remember { mutableStateOf(viewModel.brightness >= 0f) }
-    LaunchedEffect(brightness, chosen) {
-        if (chosen) window?.let { w -> w.attributes = w.attributes.also { it.screenBrightness = brightness.coerceIn(MIN_BRIGHTNESS, 1f) } }
+    LaunchedEffect(Unit) {
+        viewModel.brightness.tick(window, force = true)
+        while (true) {
+            delay(30_000)
+            viewModel.brightness.tick(window)
+        }
     }
+}
 
-    GlyphBar(
-        icon = Icons.Outlined.LightMode,
-        contentDescription = "Luminosità",
-        value = brightness,
-        onValueChange = {
-            brightness = it.coerceIn(MIN_BRIGHTNESS, 1f)
-            viewModel.brightness = brightness
-            chosen = true
+/** The brightness slider, opened from the left rail: the value is remembered for the time slot in force. */
+@Composable
+internal fun BrightnessDialog(viewModel: DashboardViewModel, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val window = remember(context) { context.findActivity()?.window }
+    val level by viewModel.brightness.level.collectAsState()
+    val slot by viewModel.brightness.slot.collectAsState()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fatto", fontSize = 20.sp) } },
+        title = { Text("Luminosità", fontSize = 26.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    when (slot) {
+                        com.bortho.autovelox.core.display.BrightnessSchedule.Slot.DAY -> "Fascia giorno: il valore resta per il giorno"
+                        com.bortho.autovelox.core.display.BrightnessSchedule.Slot.EVENING -> "Fascia sera: il valore resta per la sera"
+                        com.bortho.autovelox.core.display.BrightnessSchedule.Slot.MANUAL -> "Luminosità fissa"
+                    },
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                GlyphBar(
+                    icon = Icons.Outlined.LightMode,
+                    contentDescription = "Luminosità",
+                    value = level,
+                    onValueChange = { viewModel.brightness.setByUser(it, window) },
+                    modifier = Modifier.width(520.dp),
+                    large = true,
+                )
+            }
         },
-        modifier = modifier,
     )
 }
 
@@ -271,9 +286,6 @@ private fun Context.findActivity(): Activity? {
     }
     return null
 }
-
-/** Never fully dark: a black screen in the car is indistinguishable from a crash. */
-private const val MIN_BRIGHTNESS = 0.05f
 
 @SuppressLint("MissingPermission")
 @Composable
