@@ -98,8 +98,9 @@ class GuidanceController @Inject constructor(
 
     /** Something to say as soon as the voice is ready (the "Prova" button with alerts not running). */
     private var pendingSample: String? = null
-    private var duckedFrom: Int? = null
-    private var duckedTo: Int? = null
+    /** Music and alarm volumes as they were before the alert touched them; null while no alert is being spoken. */
+    private var savedMusic: Int? = null
+    private var savedAlarm: Int? = null
     private val duckHandler = android.os.Handler(Looper.getMainLooper())
 
     private val locationListener = object : LocationListener {
@@ -236,10 +237,14 @@ class GuidanceController @Inject constructor(
                 engineTts.setAudioAttributes(navigationAttributes())
                 engineTts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
-                    override fun onDone(utteranceId: String?) = restoreMusic()
+                    override fun onDone(utteranceId: String?) {
+                        duckHandler.post { restoreMusic() }
+                    }
 
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) = restoreMusic()
+                    override fun onError(utteranceId: String?) {
+                        duckHandler.post { restoreMusic() }
+                    }
                 })
                 ttsReady = true
                 pendingSample?.let { say(it, "sample") }
@@ -269,8 +274,16 @@ class GuidanceController @Inject constructor(
     }
 
     private fun say(text: String, id: String) {
-        applyAlertVolume()
-        lowerMusic()
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // Read both volumes before touching either: on head units where the alarm stream is tied to the music one,
+        // setting the alert volume moves the music too, and what must come back afterwards is the volume from before.
+        // An alert spoken over another one keeps the first reading.
+        if (savedMusic == null) {
+            savedMusic = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+            savedAlarm = audio.getStreamVolume(AudioManager.STREAM_ALARM)
+        }
+        applyAlertVolume(audio)
+        lowerMusic(audio, savedMusic ?: return)
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
     }
 
@@ -278,10 +291,9 @@ class GuidanceController @Inject constructor(
      * The voice uses the alarm stream (see [navigationAttributes]); setting that stream to the chosen level right before
      * speaking makes the alert volume independent of the music volume and of whatever the alarm volume was left at.
      */
-    private fun applyAlertVolume() {
+    private fun applyAlertVolume(audio: AudioManager) {
         val level = settings.alertVolume
         if (level < 0f) return
-        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
         val target = (level * max).roundToInt().coerceIn(1, max)
         runCatching { audio.setStreamVolume(AudioManager.STREAM_ALARM, target, 0) }
@@ -298,35 +310,34 @@ class GuidanceController @Inject constructor(
         .build()
 
     /**
-     * Lowers the music by the percentage set in the settings while the alert is spoken, and never takes audio focus:
-     * focus is what makes a player (or the head unit, over Bluetooth) pause, and the music must keep playing.
+     * Lowers the music to [original] minus the percentage set in the settings (40 lowered by 30% is 28) while the alert
+     * is spoken, and never takes audio focus: focus is what makes a player (or the head unit, over Bluetooth) pause, and
+     * the music must keep playing. The music is set even with no lowering, in case the alert volume moved it.
      */
-    private fun lowerMusic() {
-        val percent = settings.duckPercent
-        if (percent <= 0) return
-        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val target = MusicDucking.target(current, percent)
-        if (duckedFrom == null && target < current) {
-            duckedFrom = current
-            duckedTo = target
-            audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+    private fun lowerMusic(audio: AudioManager, original: Int) {
+        val target = MusicDucking.target(original, settings.duckPercent)
+        if (audio.getStreamVolume(AudioManager.STREAM_MUSIC) != target) {
+            runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0) }
+                .onFailure { Log.w(TAG, "cannot lower the music", it) }
         }
         // safety net: the volume comes back even if the end of the utterance is never reported
         duckHandler.removeCallbacksAndMessages(null)
         duckHandler.postDelayed({ restoreMusic() }, MAX_DUCK_MS)
     }
 
+    /** Puts back the volumes read before the alert: the alarm first, so that where the streams are tied the music wins. */
     private fun restoreMusic() {
         duckHandler.removeCallbacksAndMessages(null)
-        val from = duckedFrom ?: return
+        val music = savedMusic ?: return
+        val alarm = savedAlarm
+        savedMusic = null
+        savedAlarm = null
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        // if the user changed the volume in the meantime, theirs wins
-        if (MusicDucking.shouldRestore(audio.getStreamVolume(AudioManager.STREAM_MUSIC), duckedTo)) {
-            audio.setStreamVolume(AudioManager.STREAM_MUSIC, from, 0)
+        if (alarm != null && settings.alertVolume >= 0f) {
+            runCatching { audio.setStreamVolume(AudioManager.STREAM_ALARM, alarm, 0) }
         }
-        duckedFrom = null
-        duckedTo = null
+        runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, music, 0) }
+            .onFailure { Log.w(TAG, "cannot restore the music", it) }
     }
 
     private companion object {

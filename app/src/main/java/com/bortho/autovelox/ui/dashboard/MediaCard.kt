@@ -78,7 +78,7 @@ import kotlin.math.min
  *   the card and, under it, the buttons (play/pause big, then previous and next);
  * - **narrow** (while an alert takes room): the same elements stacked in a column, the cover on top.
  * The layout is computed from the card's real size for both arrangements and blended by how narrow the card is.
- * With nothing playing it shows the car in 3D, with the last player used at the top left and a small button to start it.
+ * With nothing playing it shows only the last player used at the top left and a small button to start it.
  */
 @Composable
 fun MediaCard(
@@ -103,19 +103,24 @@ fun MediaCard(
         modifier
             .clip(RoundedCornerShape(36.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            // on the card itself, so it sees the taps its content lets through (buttons and bars keep theirs, the car's
-            // drag does not swallow a tap); only the upper half counts, the lower one holds the controls
+            // on the card itself, so it sees the taps its content lets through (buttons and bars keep theirs); only the
+            // upper half counts, the lower one holds the controls
             .pointerInput(onBackgroundTap) {
                 detectTapGestures { if (it.y < size.height * 0.5f) onBackgroundTap() }
             },
     ) {
-        val track = media?.media
-        if (track == null || track.state == "stopped" && track.title.isBlank()) {
+        if (media == null || !media.hasTrack()) {
             NothingPlaying(phoneConnected, apps, lastApp, onLaunch, onSelect)
         } else {
             Playing(media, phoneConnected, onCommand, onSeek, apps, onLaunch, onSelect, coverBackground)
         }
     }
+}
+
+/** The phone has sent a track (playing or paused) for the card to show, not just an empty stopped player. */
+internal fun RadioMediaState?.hasTrack(): Boolean {
+    val track = this?.media ?: return false
+    return !(track.state == "stopped" && track.title.isBlank())
 }
 
 @Composable
@@ -130,8 +135,6 @@ private fun NothingPlaying(
     val offered: SessionRef? = lastApp?.let { (pkg, label, icon) -> SessionRef(pkg, label, playing = false, selected = true, icon = icon) }
         ?: apps?.launchers?.firstOrNull()?.let { SessionRef(it.pkg, it.label, playing = false, selected = true, icon = it.icon) }
     Box(Modifier.fillMaxSize()) {
-        CarView(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 72.dp, bottom = 12.dp))
-
         // the player at the top left; a bare play triangle at the top right starts it (only while the phone is connected)
         Box(Modifier.align(Alignment.TopStart).fillMaxWidth().padding(start = 18.dp, top = 16.dp, end = 12.dp)) {
             Row(

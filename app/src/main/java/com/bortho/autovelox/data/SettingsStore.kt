@@ -158,6 +158,33 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getBoolean(KEY_COVER_BG, true)
         set(value) = prefs.edit().putBoolean(KEY_COVER_BG, value).apply()
 
+    private val _pinnedApps = MutableStateFlow(readList(KEY_PINNED_APPS))
+
+    /** Dashboard: packages pinned to the left rail, in the order shown. */
+    val pinnedApps: StateFlow<List<String>> = _pinnedApps.asStateFlow()
+
+    fun savePinnedApps(packages: List<String>) {
+        prefs.edit().putString(KEY_PINNED_APPS, packages.joinToString(",")).apply()
+        _pinnedApps.value = packages
+    }
+
+    private val _excludedApps = MutableStateFlow(readList(KEY_EXCLUDED_APPS).toSet())
+
+    /** Dashboard: packages hidden from the app launcher. */
+    val excludedApps: StateFlow<Set<String>> = _excludedApps.asStateFlow()
+
+    fun saveExcludedApps(packages: Set<String>) {
+        prefs.edit().putString(KEY_EXCLUDED_APPS, packages.joinToString(",")).apply()
+        _excludedApps.value = packages
+    }
+
+    private fun readList(key: String): List<String> = prefs.getString(key, null)?.split(',')?.filter { it.isNotBlank() }.orEmpty()
+
+    /** Dashboard: size of the icons in the app launcher, in dp (the labels follow it). */
+    var launcherIconSize: Float
+        get() = prefs.getFloat(KEY_LAUNCHER_ICON, DEFAULT_LAUNCHER_ICON_DP)
+        set(value) = prefs.edit().putFloat(KEY_LAUNCHER_ICON, value).apply()
+
     /** Phone navigation mode: which of the views was used last (name of `NavigationVariant`). */
     var navigationView: String?
         get() = prefs.getString(KEY_NAV_VIEW, null)
@@ -170,6 +197,10 @@ class SettingsStore @Inject constructor(@ApplicationContext context: Context) {
 
     companion object {
         const val DEFAULT_DUCK_PERCENT = 60
+        const val DEFAULT_LAUNCHER_ICON_DP = 72f
+        const val KEY_PINNED_APPS = "pinned_apps"
+        const val KEY_EXCLUDED_APPS = "excluded_apps"
+        const val KEY_LAUNCHER_ICON = "launcher_icon_size"
         val DEFAULT_MEDIA_APPS = listOf("com.google.android.apps.youtube.music", "com.spotify.music")
         const val KEY_SETTINGS_PENDING = "settings_pending"
         const val KEY_DUCK = "duck_percent"

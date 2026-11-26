@@ -264,7 +264,7 @@ fun SettingsScreen(
                 HorizontalDivider()
                 ValueSlider(
                     label = "Musica abbassata durante gli avvisi",
-                    value = "$duck%",
+                    value = "-$duck%",
                     slider = {
                         Slider(
                             value = duck.toFloat(),

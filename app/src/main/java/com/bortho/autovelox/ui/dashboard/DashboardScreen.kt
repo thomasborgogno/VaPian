@@ -20,9 +20,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import androidx.compose.foundation.background
-import androidx.compose.ui.unit.lerp
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -145,9 +142,8 @@ fun DashboardScreen(onOpenDiagnostics: () -> Unit, viewModel: DashboardViewModel
                 }
             }
         }
-        // the volume bar at the bottom, across the whole width (on the driving page it starts where the cards start)
-        val aligned by animateFloatAsState(if (pager.currentPage == 0) 1f else 0f, tween(500), label = "alignedBars")
-        VolumeBar(Modifier.fillMaxWidth().padding(start = lerp(16.dp, 78.dp, aligned), end = lerp(16.dp, 22.dp, aligned)))
+        // the volume bar at the bottom, across the whole width, the same on both pages
+        VolumeBar(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
     }
 
     BrightnessTicker(viewModel)
@@ -241,50 +237,6 @@ private fun BrightnessTicker(viewModel: DashboardViewModel) {
             viewModel.brightness.tick(window)
         }
     }
-}
-
-/** The brightness slider, opened from the left rail: the value is remembered for the time slot in force. */
-@Composable
-internal fun BrightnessDialog(viewModel: DashboardViewModel, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val window = remember(context) { context.findActivity()?.window }
-    val level by viewModel.brightness.level.collectAsState()
-    val slot by viewModel.brightness.slot.collectAsState()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fatto", fontSize = 20.sp) } },
-        title = { Text("Luminosità", fontSize = 26.sp, fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    when (slot) {
-                        com.bortho.autovelox.core.display.BrightnessSchedule.Slot.DAY -> "Fascia giorno: il valore resta per il giorno"
-                        com.bortho.autovelox.core.display.BrightnessSchedule.Slot.EVENING -> "Fascia sera: il valore resta per la sera"
-                        com.bortho.autovelox.core.display.BrightnessSchedule.Slot.MANUAL -> "Luminosità fissa"
-                    },
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                )
-                GlyphBar(
-                    icon = Icons.Outlined.LightMode,
-                    contentDescription = "Luminosità",
-                    value = level,
-                    onValueChange = { viewModel.brightness.setByUser(it, window) },
-                    modifier = Modifier.width(520.dp),
-                    large = true,
-                )
-            }
-        },
-    )
-}
-
-private fun Context.findActivity(): Activity? {
-    var c = this
-    while (c is ContextWrapper) {
-        if (c is Activity) return c
-        c = c.baseContext
-    }
-    return null
 }
 
 @SuppressLint("MissingPermission")

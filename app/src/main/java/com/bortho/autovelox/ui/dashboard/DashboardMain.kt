@@ -1,6 +1,14 @@
 package com.bortho.autovelox.ui.dashboard
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Box
+import com.bortho.autovelox.launcher.LaunchableApp
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -16,7 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -66,27 +74,41 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
 
     // 0 = calm, 1 = a camera is approaching; held a little after the camera passes so the layout does not flicker
     val alert = rememberHeld(guidance.camera != null, holdMs = 1_800)
-    // Which card is the big one. On its own: the radar during an alert or with no music playing (the music card has
-    // nothing to show but the car), the music otherwise. A tap on either card (outside its lower part) swaps them,
-    // always; the choice holds until the situation changes (an alert starts or ends, music starts or stops).
-    val musicPlaying = media?.media?.isPlaying == true
-    // a pause between tracks is not "no music": only after a few seconds without playback
-    val noMusic = !rememberHeld(musicPlaying, holdMs = 4_000)
+    // Which card is the big one. On its own: the radar during an alert or with no track from the phone (the music card
+    // has almost nothing to show), the music otherwise, playing or paused: as soon as the phone connects and sends
+    // title and cover, the music takes the room back. A tap on either card (outside its lower part) swaps them,
+    // always; the choice holds until the situation changes (an alert starts or ends, a track arrives or goes away).
+    // a gap between tracks is not "no music": only after a few seconds without one
+    val noMusic = !rememberHeld(media.hasTrack(), holdMs = 4_000)
     val autoRadarBig = alert || noMusic
     var manualRadarBig by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(autoRadarBig) { manualRadarBig = null }
     val radarBig = manualRadarBig ?: autoRadarBig
     val swapCards = { manualRadarBig = !radarBig }
     val layoutProgress by animateFloatAsState(if (radarBig) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "layoutProgress")
-    var showBrightness by remember { mutableStateOf(false) }
+    var showLauncher by remember { mutableStateOf(false) }
+    BackHandler(enabled = showLauncher) { showLauncher = false }
+    val apps by viewModel.launcher.apps.collectAsState()
+    val pinned by viewModel.launcher.pinned.collectAsState()
+    val pinnedApps = remember(apps, pinned) { pinned.mapNotNull { pkg -> apps.firstOrNull { it.pkg == pkg } } }
     SideEffect { onLayoutProgress(layoutProgress) } // the bars under the cards follow the same widths
     val alertLevel by animateFloatAsState(if (alert) 1f else 0f, tween(950, easing = FastOutSlowInEasing), label = "alertLevel")
 
     Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val context = LocalContext.current
         LeftRail(
-            onOpenSettings = onOpenSettings,
-            onBrightness = { showBrightness = true },
+            pinned = pinnedApps,
+            onOpenApp = { pkg ->
+                showLauncher = false
+                if (!viewModel.launcher.launch(pkg)) Toast.makeText(context, "Impossibile aprire l'app", Toast.LENGTH_SHORT).show()
+            },
+            onReorder = viewModel.launcher::reorderPinned,
+            onOpenSettings = { showLauncher = false; onOpenSettings() },
+            launcherOpen = showLauncher,
+            onLauncher = {
+                if (!showLauncher) viewModel.refreshApps()
+                showLauncher = !showLauncher
+            },
             // the assistant is the phone's, reached over the hands-free link: offered once a phone is chosen
             showAssistant = viewModel.phoneAddress != null,
             onAssistant = {
@@ -100,7 +122,8 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
                 }
             },
         )
-        Row(Modifier.weight(1f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             RadarCard(
                 progress = layoutProgress,
                 alertLevel = alertLevel,
@@ -132,9 +155,21 @@ internal fun DashboardMain(viewModel: DashboardViewModel, onOpenSettings: () -> 
                 modifier = Modifier.weight(lerp(2f, 1f, layoutProgress)).fillMaxHeight(),
             )
         }
+        // the launcher covers the cards only: the rail stays, so its button closes it again
+        LauncherLayer(showLauncher, viewModel, onDismiss = { showLauncher = false })
+        }
     }
+}
 
-    if (showBrightness) BrightnessDialog(viewModel) { showBrightness = false }
+@Composable
+private fun LauncherLayer(visible: Boolean, viewModel: DashboardViewModel, onDismiss: () -> Unit) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)) + scaleIn(tween(250), initialScale = 0.96f),
+        exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.96f),
+    ) {
+        LauncherOverlay(viewModel, onDismiss = onDismiss, modifier = Modifier.fillMaxSize())
+    }
 }
 
 /** True while [active], and for [holdMs] after it stops. */
@@ -152,22 +187,34 @@ internal fun rememberHeld(active: Boolean, holdMs: Long): Boolean {
     return held
 }
 
-/** The black strip on the left: shortcuts to the assistant and to the settings, room for more apps later. */
+/** The black strip on the left: the pinned apps, then the phone's assistant, the app launcher and the settings. */
 @Composable
-private fun LeftRail(onOpenSettings: () -> Unit, onBrightness: () -> Unit, showAssistant: Boolean, onAssistant: () -> Unit) {
-    Column(Modifier.width(60.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun LeftRail(
+    pinned: List<LaunchableApp>,
+    onOpenApp: (String) -> Unit,
+    onReorder: (List<String>) -> Unit,
+    onOpenSettings: () -> Unit,
+    launcherOpen: Boolean,
+    onLauncher: () -> Unit,
+    showAssistant: Boolean,
+    onAssistant: () -> Unit,
+) {
+    Column(Modifier.width(60.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(RAIL_GAP, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+        PinnedRailApps(pinned, onOpenApp, onReorder)
         if (showAssistant) {
             RailButton(Icons.Outlined.Mic, "Assistente del telefono", onClick = onAssistant)
         }
-        RailButton(Icons.Outlined.LightMode, "Luminosità", onBrightness)
+        RailButton(Icons.Outlined.Apps, "App", onLauncher, selected = launcherOpen)
         RailButton(Icons.Outlined.Settings, "Impostazioni", onOpenSettings)
     }
 }
 
 @Composable
-private fun RailButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+private fun RailButton(icon: ImageVector, description: String, onClick: () -> Unit, selected: Boolean = false) {
     Column(
-        Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.10f)).clickable(onClick = onClick),
+        Modifier.size(RAIL_BUTTON).clip(CircleShape)
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = if (selected) 0.28f else 0.10f))
+            .clickable(onClick = onClick),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

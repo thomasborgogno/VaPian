@@ -214,10 +214,14 @@ internal fun DashboardSettings(
 
             SectionTitle("Musica")
             SettingsCard {
-                ValueSlider("Abbassata durante gli avvisi", "$duckPercent%", titleSize = 22) {
+                ValueSlider("Abbassata durante gli avvisi", "-$duckPercent%", titleSize = 22) {
                     Slider(value = duckPercent.toFloat(), onValueChange = { onDuck((it / 10).roundToInt() * 10) }, valueRange = 0f..100f, steps = 9)
                 }
-                Text("La musica non si ferma: viene solo abbassata", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text(
+                    "Rispetto al volume del momento, che torna com'era a fine avviso. La musica non si ferma",
+                    fontSize = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Column(Modifier.weight(1f)) {

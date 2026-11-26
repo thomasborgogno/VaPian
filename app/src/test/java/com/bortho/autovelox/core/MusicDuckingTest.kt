@@ -2,8 +2,6 @@ package com.bortho.autovelox.core
 
 import com.bortho.autovelox.core.guidance.MusicDucking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MusicDuckingTest {
@@ -23,9 +21,8 @@ class MusicDuckingTest {
     }
 
     @Test
-    fun restoresOnlyIfTheVolumeWasLeftAlone() {
-        assertTrue(MusicDucking.shouldRestore(currentVolume = 6, loweredTo = 6))
-        assertFalse(MusicDucking.shouldRestore(currentVolume = 9, loweredTo = 6)) // the user turned it up meanwhile
-        assertFalse(MusicDucking.shouldRestore(currentVolume = 6, loweredTo = null))
+    fun isRelativeToTheCurrentVolume() {
+        assertEquals(28, MusicDucking.target(40, 30)) // 30% of 40 is 12
+        assertEquals(70, MusicDucking.target(100, 30))
     }
 }

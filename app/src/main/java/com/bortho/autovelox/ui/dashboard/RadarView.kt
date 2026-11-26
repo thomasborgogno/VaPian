@@ -1,7 +1,5 @@
 package com.bortho.autovelox.ui.dashboard
 
-import android.graphics.Paint
-import android.graphics.Typeface
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -34,7 +32,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.bortho.autovelox.core.geo.Geo
 import com.bortho.autovelox.core.guidance.GuidanceState
@@ -48,7 +45,6 @@ import com.bortho.autovelox.ui.map.CameraColors
 import com.bortho.autovelox.ui.map.CameraGlyph
 import com.bortho.autovelox.ui.theme.VaPianColors
 import kotlin.math.atan2
-import kotlin.math.roundToInt
 
 /**
  * Tile-free "radar": the driver at the bottom, the direction of travel pointing up, nearby cameras as glyphs. It needs
@@ -92,8 +88,6 @@ fun RadarView(
         }
     }
 
-    val labelPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD } }
-
     Box(modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val carX = size.width / 2f
@@ -119,7 +113,7 @@ fun RadarView(
                 }
             }
 
-            // distance rings, the outer one labelled with the current range
+            // distance rings, without a scale label
             for (fraction in listOf(0.25f, 0.5f, 0.75f, 1f)) {
                 val r = maxRadius * fraction
                 drawCircle(ringColor, radius = r, center = car, style = Stroke(width = 2.dp.toPx()))
@@ -130,11 +124,6 @@ fun RadarView(
                     val glow = if (since < 0f) 0f else 1f - since
                     if (glow > 0f) drawCircle(accent.copy(alpha = 0.85f * glow), radius = r, center = car, style = Stroke(width = (2 + 3 * glow).dp.toPx()))
                 }
-            }
-            drawIntoCanvas {
-                labelPaint.color = textColor.copy(alpha = 0.45f).toArgb()
-                labelPaint.textSize = 15.dp.toPx()
-                it.nativeCanvas.drawText(rangeLabel(rangeTarget), carX + 8.dp.toPx(), carY - maxRadius + 18.dp.toPx(), labelPaint)
             }
 
             if (pulse > 0f && pulse < 1f) {
@@ -258,9 +247,6 @@ private fun interpolate(a: Pose, b: Pose, t: Double) = Pose(
     PoseLerp.lerp(a.lng, b.lng, t),
     PoseLerp.lerpAngle(a.heading, b.heading, t),
 )
-
-private fun rangeLabel(meters: Double): String =
-    if (meters >= 1000) "${"%.1f".format(java.util.Locale.ITALIAN, meters / 1000).removeSuffix(",0")} km" else "${meters.roundToInt()} m"
 
 /** One GPS fix per second: gliding over the same time keeps the motion continuous. */
 private const val GLIDE_MS = 1_000

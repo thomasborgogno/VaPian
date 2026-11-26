@@ -138,8 +138,9 @@ internal fun RadarCard(
         // 0 = date beside the time, 1 = date under it: animated, so the date glides to its new place
         val stack by animateFloatAsState(if (narrow) 1f else 0f, tween(450, easing = FastOutSlowInEasing), label = "dateStack")
         val calmTop = if (compact) 28.dp else lerp(136.dp, 176.dp, stack)
-        // the radar: its top margin leaves room for time/speed when calm; its bottom margin for the buttons
-        val bottomRoom = lerp(60.dp, 104.dp, maxOf(p, pendingRoom))
+        // the radar: its top margin leaves room for time/speed when calm; its bottom margin for the hint and the undo
+        // button. Enlarged, it rests on the bottom edge of the card and the buttons float over it.
+        val bottomRoom = lerp(lerp(60.dp, 104.dp, pendingRoom), 0.dp, p)
         Box(
             Modifier
                 .fillMaxSize()

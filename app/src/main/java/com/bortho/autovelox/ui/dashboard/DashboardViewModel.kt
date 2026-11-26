@@ -28,6 +28,7 @@ import com.bortho.autovelox.link.RadioMediaState
 import com.bortho.autovelox.vehicle.VehicleSignals
 import com.bortho.autovelox.vehicle.VehicleState
 import com.bortho.autovelox.display.BrightnessController
+import com.bortho.autovelox.launcher.AppLauncher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -43,6 +44,8 @@ class DashboardViewModel @Inject constructor(
     private val settings: SettingsStore,
     private val voiceAssistant: VoiceAssistant,
     val brightness: BrightnessController,
+    /** The app launcher and the apps pinned to the left rail. */
+    val launcher: AppLauncher,
 ) : ViewModel() {
     val guidanceState: StateFlow<GuidanceState> = guidance.state
     val fix: StateFlow<LocationFix?> = guidance.fix
@@ -88,7 +91,13 @@ class DashboardViewModel @Inject constructor(
     /** The last music app the phone played (package, name, icon): offered with a small play button when nothing plays. */
     val lastMediaApp: StateFlow<Triple<String, String, ByteArray>?> = _lastMediaApp
 
+    /** Reads the installed apps again (the launcher calls it when it opens). */
+    fun refreshApps() {
+        viewModelScope.launch { launcher.refresh() }
+    }
+
     init {
+        refreshApps() // the rail shows the pinned apps right away
         // remember the player in use, so it can still be shown (and restarted) when nothing plays or the phone is away
         viewModelScope.launch {
             radioMedia.apps.collect { apps ->

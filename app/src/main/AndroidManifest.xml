@@ -21,10 +21,15 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-    <!-- Android 11+: lets the phone read the display name of music apps, shown on the dashboard. -->
+    <!-- Android 11+: lets the phone read the display name of music apps, shown on the dashboard;
+         lets the dashboard's app launcher list the apps installed on the head unit. -->
     <queries>
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
 

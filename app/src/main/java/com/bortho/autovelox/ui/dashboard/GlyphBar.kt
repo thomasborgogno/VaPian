@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 /**
  * An always-visible monochrome bar: a glyph (dim) and an 8 dp track filled in white. While it is being touched the
  * track grows to 12 dp and the glyph lights up, so you can tell what you are moving without any text. The touch area is
- * tall (56 dp) so it is easy to hit in the car; [large] makes everything bigger still (the brightness dialog). Dragging is consumed, so it
+ * tall (56 dp) so it is easy to hit in the car; [large] makes everything bigger still. Dragging is consumed, so it
  * never turns into a page swipe of the pager that hosts it.
  */
 @Composable
